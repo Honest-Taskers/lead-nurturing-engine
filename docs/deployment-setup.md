@@ -1,6 +1,6 @@
 # Deployment setup guide
 
-One-time setup for the 3-environment pipeline (dev → staging → production). Everything in the code is already done; this guide covers the dashboards: **GitHub**, **Vercel**, **Squarespace** (DNS), and your MySQL host (Cloudways) for the production database.
+One-time setup for the 3-environment pipeline (dev → staging → production). Everything in the code is already done; this guide covers the dashboards: **GitHub**, **TiDB Cloud** (databases), **Vercel**, and **Squarespace** (DNS).
 
 ---
 
@@ -20,22 +20,37 @@ One-time setup for the 3-environment pipeline (dev → staging → production). 
 
    This is the test gate: nothing merges to `main` (and therefore nothing deploys to production) unless CI is green.
 
-## 2. Production database — new tables on the platform MySQL
+## 2. Databases — one TiDB Cloud Serverless cluster, three databases
 
-The app uses tables prefixed `lne_` so it can safely share the existing platform database (no name collisions).
+All environments use a single free [TiDB Cloud](https://tidbcloud.com) Serverless cluster (MySQL-compatible, 5GB storage + 50M request units/month free, publicly reachable over TLS — no IP whitelisting, so it works from Vercel and your machine alike).
 
-1. **Enable remote access** so both Vercel and your machine can connect. On Cloudways: **Server → Security** — Vercel's serverless functions have *dynamic* IPs, so you must allow MySQL connections from all IPs (`%`). Mitigations, strongly recommended:
-   - Create a **dedicated MySQL user** for this app (not the platform's main user) with privileges only on the platform database — or at minimum a very strong generated password.
-   - On Cloudways this is: application → **Access Details → Database Access** for credentials; ask Cloudways support to add a MySQL user or allow remote access if the UI doesn't expose it.
-2. Build the production connection string:
+1. Sign up at tidbcloud.com (no credit card) → **Create Cluster** → choose **Serverless**, pick a region close to your Vercel region (US East is a safe default), name it e.g. `nurture`.
+2. Open the cluster → **Connect** → generate/copy the password. Note the host (like `gateway01.us-east-1.prod.aws.tidbcloud.com`), port (`4000`), and user (like `xxxxxxxx.root`).
+3. Create the three databases. In the cluster's **SQL Editor** (or Chat2Query) run:
+   ```sql
+   CREATE DATABASE IF NOT EXISTS nurture_dev;
+   CREATE DATABASE IF NOT EXISTS nurture_staging;
+   CREATE DATABASE IF NOT EXISTS nurture_prod;
    ```
-   mysql://<user>:<password>@<server-ip>:3306/<database-name>
+4. Build one connection string per environment — TLS is required, hence the `ssl` param:
    ```
-3. From your machine, create the tables (idempotent, data-safe — it only runs `CREATE TABLE IF NOT EXISTS`):
+   mysql://<user>:<password>@<host>:4000/nurture_dev?ssl={"rejectUnauthorized":true}
+   mysql://<user>:<password>@<host>:4000/nurture_staging?ssl={"rejectUnauthorized":true}
+   mysql://<user>:<password>@<host>:4000/nurture_prod?ssl={"rejectUnauthorized":true}
+   ```
+5. From your machine, create the tables in each (idempotent, data-safe — only `CREATE TABLE IF NOT EXISTS`):
    ```bash
-   DATABASE_URL="mysql://..." npm run db:schema
+   DATABASE_URL="<dev-url>" npm run db:schema
+   DATABASE_URL="<staging-url>" npm run db:schema
+   DATABASE_URL="<prod-url>" npm run db:schema
+   ```
+6. Seed demo data into dev and staging only:
+   ```bash
+   DATABASE_URL="<dev-url>" npm run seed
+   DATABASE_URL="<staging-url>" npm run seed
    ```
    **Never run `npm run seed` against production** — it inserts demo leads (and the script refuses when `NODE_ENV=production`).
+7. Put the dev URL in `server/.env` as `DATABASE_URL`.
 
 ## 3. Vercel — project, env vars, domains
 
@@ -44,9 +59,9 @@ The app uses tables prefixed `lne_` so it can safely share the existing platform
 3. Project → **Settings → Environment Variables**:
    | Variable | Environment | Value |
    | --- | --- | --- |
-   | `DATABASE_URL` | Production | the platform MySQL URI from step 2 |
+   | `DATABASE_URL` | Production | the `nurture_prod` TiDB URI from step 2 |
    | `OPENAI_API_KEY` | Production | production key |
-   | `DATABASE_URL` | Preview → *limit to branch `staging`* | the staging Railway MySQL URI |
+   | `DATABASE_URL` | Preview → *limit to branch `staging`* | the `nurture_staging` TiDB URI |
    | `OPENAI_API_KEY` | Preview → *limit to branch `staging`* | staging key (can be the same) |
 
    (`NODE_ENV=production` is set automatically by Vercel for both production and preview builds.)
@@ -77,20 +92,15 @@ The app uses tables prefixed `lne_` so it can safely share the existing platform
 **Production**
 1. Open a PR `staging` → `main`; confirm the CI checks appear and pass; merge.
 2. `https://nurture.honesttaskers.com/api/health` → `{"ok":true,...}`.
-3. Smoke-test the UI. Confirm the `lne_*` tables appeared in the platform DB and nothing else changed.
+3. Smoke-test the UI. Confirm `nurture_prod` contains the `lne_*` tables and no demo data.
 
 **Rollback drill (do this once so it's familiar)**
 1. Deploy a trivial visible change to production.
 2. Vercel → Deployments → previous production deployment → **⋯ → Instant Rollback**.
 3. Confirm the site reverted within seconds, then roll forward (redeploy the newest).
 
-## 6. Staging DB refresh (Railway 24h expiry)
+## 6. Database maintenance notes (TiDB Cloud)
 
-The staging database is a temporary Railway instance by choice. When it expires:
-
-1. Railway → create a new MySQL database → copy its public connection URL.
-2. Vercel → Settings → Environment Variables → edit `DATABASE_URL` (Preview / `staging` branch) → save.
-3. Locally: `DATABASE_URL=<new-url> npm run seed` (creates schema + demo data).
-4. Vercel → Deployments → latest staging deployment → **⋯ → Redeploy** (env var changes need a redeploy).
-
-~3 minutes total. If staging ever needs to be permanent, swap in any persistent MySQL and only step 2–4 change.
+- The free tier gives 5GB storage + 50M request units/month across the cluster — generous for this app; usage is visible on the cluster overview page.
+- Nothing expires and nothing sleeps: no periodic refresh chore. To reset staging or dev data, just re-run `DATABASE_URL=<env-url> npm run seed` (idempotent) or drop/recreate that one database in the SQL Editor.
+- If Vercel env vars ever change, remember a **Redeploy** is needed for them to take effect.

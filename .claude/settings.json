@@ -44,7 +44,10 @@
       "Bash(python -)",
       "Bash(npx vitest *)",
       "Bash(TEST_DATABASE_URL=\"mysql://root:uRcrZfhNzacedKByMbsGAHflLcrZSOvs@sakura.proxy.rlwy.net:20483/railway\" npx vitest run)",
-      "Bash(netstat -ano)"
+      "Bash(netstat -ano)",
+      "Bash(node -e ' *)",
+      "Bash(curl -s --max-time 10 https://api.ipify.org)",
+      "WebSearch"
     ]
   }
 }

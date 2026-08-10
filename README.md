@@ -9,11 +9,13 @@ Honest Taskers' relationship engine: track healthcare leads, generate AI-written
 
 | Env | URL | Branch | Database |
 | --- | --- | --- | --- |
-| dev | http://localhost:5173 | any | Railway temporary MySQL (expires every 24h — recreate + reseed) |
-| staging | https://nurture-staging.honesttaskers.com | `staging` | Railway temporary MySQL (same 24h caveat) |
-| production | https://nurture.honesttaskers.com | `main` | Platform MySQL (shared server, `lne_`-prefixed tables) |
+| dev | http://localhost:5173 | any | TiDB Cloud Serverless — `nurture_dev` |
+| staging | https://nurture-staging.honesttaskers.com | `staging` | TiDB Cloud Serverless — `nurture_staging` |
+| production | https://nurture.honesttaskers.com | `main` | TiDB Cloud Serverless — `nurture_prod` |
 
-Hosting is one Vercel project: pushes to `staging` deploy the staging domain, merges to `main` deploy production. The Express app runs as a single serverless function (`api/index.ts`); the frontend is static (`app/dist`); `vercel.json` wires routing. All tables are prefixed `lne_` (see `server/src/db/tables.ts`) because production shares a database with the main platform. Report cover images are stored as MySQL BLOBs (`lne_report_images`) — serverless has no persistent disk.
+Hosting is one Vercel project: pushes to `staging` deploy the staging domain, merges to `main` deploy production. The Express app runs as a single serverless function (`api/index.ts`); the frontend is static (`app/dist`); `vercel.json` wires routing.
+
+All three databases live in one free TiDB Cloud Serverless cluster (MySQL-compatible, TLS required, no IP whitelisting). Connection strings must carry the TLS param, e.g. `mysql://user:pass@gateway01.<region>.prod.aws.tidbcloud.com:4000/nurture_dev?ssl={"rejectUnauthorized":true}`. Tables keep the `lne_` prefix (see `server/src/db/tables.ts`). Report cover images are stored as MySQL BLOBs (`lne_report_images`) — serverless has no persistent disk.
 
 ## Local development
 
@@ -60,6 +62,6 @@ Vercel dashboard → project → **Deployments** → pick the previous productio
 
 ## Runbooks
 
-- **Full deployment setup** (Vercel, GitHub, Squarespace DNS, database access): [docs/deployment-setup.md](docs/deployment-setup.md)
-- **Refresh the staging DB** (after the 24h Railway expiry): create a new Railway MySQL → update `DATABASE_URL` in Vercel (Preview scope, `staging` branch) → locally: `DATABASE_URL=<new-url> npm run seed` → redeploy staging (Deployments → ⋯ → Redeploy).
-- **Apply schema to production** (first time or after schema changes): `DATABASE_URL=<prod-url> npm run db:schema` from your machine. Never seed production — `seed.ts` refuses when `NODE_ENV=production`.
+- **Full deployment setup** (TiDB Cloud, Vercel, GitHub, Squarespace DNS): [docs/deployment-setup.md](docs/deployment-setup.md)
+- **Apply schema** (first time or after schema changes, per environment): `DATABASE_URL=<env-url> npm run db:schema` from your machine — idempotent and data-safe.
+- **Seed demo data** (dev/staging only): `DATABASE_URL=<env-url> npm run seed`. Never seed production — `seed.ts` refuses when `NODE_ENV=production`.
