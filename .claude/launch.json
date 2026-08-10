@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "wireframes",
+      "runtimeExecutable": "C:\\Python314\\python.exe",
+      "runtimeArgs": ["-m", "http.server", "8756"],
+      "port": 8756,
+      "url": "http://localhost:8756"
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+node_modules/
+dist/
+*.log
+.env
+.env.*
+!.env.example
+.DS_Store
+.vercel/
+
+# Local/private assets kept out of git
+brand-guide/
+meeting-transcript/
+wireframes-lead-engine screenshots/
+.claude/settings.local.json
+
+# Runtime-generated report images (legacy local dev)
+server/public/report-images/*
+!server/public/report-images/.gitkeep

@@ -1,0 +1,35 @@
+html,
+body,
+#root {
+  min-height: 100vh;
+}
+
+/* Print: show only the report document (Download PDF = browser print-to-PDF) */
+@media print {
+  .no-print,
+  nav,
+  aside {
+    display: none !important;
+  }
+  /* Hide the app sidebar (fixed navy column) */
+  #root > div > div:first-of-type {
+    display: none !important;
+  }
+  #root > div > div:last-of-type {
+    margin-left: 0 !important;
+  }
+  .report-layout {
+    padding: 0 !important;
+  }
+  .report-document {
+    border: none !important;
+    box-shadow: none !important;
+  }
+  .report-header {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  body {
+    background: #fff !important;
+  }
+}

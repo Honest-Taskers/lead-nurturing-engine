@@ -1,0 +1,17 @@
+{
+  "name": "lead-nurturing-engine",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev:server": "npm --prefix server run dev",
+    "dev:app": "npm --prefix app run dev",
+    "build": "npm --prefix server run build && npm --prefix app run build",
+    "test": "npm --prefix server test && npm --prefix app test",
+    "lint": "npm --prefix app run lint",
+    "db:schema": "npm --prefix server run db:schema",
+    "seed": "npm --prefix server run seed"
+  }
+}
