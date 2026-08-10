@@ -7,7 +7,7 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "seed": "tsx src/db/seed.ts",
+    "seed": "node scripts/apply-schema.mjs && tsx src/db/seed.ts",
     "db:schema": "node scripts/apply-schema.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"

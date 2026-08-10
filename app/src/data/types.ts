@@ -4,17 +4,22 @@ export interface Lead {
   id: string;
   // Organization
   organization: string;
+  /** "Vertical" in the source spreadsheet. */
   industry: string;
   website?: string;
+  /** logo.dev URL, derived server-side from the website domain. */
+  logoUrl?: string | null;
   headquarters?: string;
   orgSize?: string;
   locationsReach?: string;
   hiringSignal?: string;
-  // Target persona (drives personalization)
+  // Target persona (drives personalization) — one lead row per person
   personaName: string;
   personaTitle: string;
   emails?: string;
   linkedinUrl?: string;
+  /** LinkedIn / contact path: profile and/or company page used to reach them. */
+  contactPath?: string | null;
   phone?: string;
   mailingAddress?: string;
   assignedRep: string;

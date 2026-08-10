@@ -34,12 +34,45 @@ const statements = sql
   .map((s) => s.trim())
   .filter(Boolean);
 
+/**
+ * Column-level migrations for databases created before a column existed.
+ * MySQL/TiDB have no ADD COLUMN IF NOT EXISTS, so each one is guarded by an
+ * information_schema lookup — making this script safe to re-run anywhere.
+ * `minLength` widens an existing column that is narrower than the target.
+ */
+const COLUMNS = [
+  { table: 'lne_leads', name: 'logo_url', type: 'VARCHAR(500) NULL', after: 'website' },
+  { table: 'lne_leads', name: 'contact_path', type: 'VARCHAR(500) NULL', after: 'linkedin_url' },
+  { table: 'lne_leads', name: 'emails', type: 'VARCHAR(500) NULL', minLength: 500 },
+  { table: 'lne_leads', name: 'linkedin_url', type: 'VARCHAR(500) NULL', minLength: 500 },
+  { table: 'lne_leads', name: 'phone', type: 'VARCHAR(120) NULL', minLength: 120 },
+];
+
 const conn = await mysql.createConnection({ uri: process.env.DATABASE_URL });
 try {
   for (const stmt of statements) {
     await conn.query(stmt);
   }
   console.log(`schema ok — ${statements.length} statements applied from ${path.basename(schemaPath)}`);
+
+  const changes = [];
+  for (const col of COLUMNS) {
+    const [[existing]] = await conn.query(
+      `SELECT CHARACTER_MAXIMUM_LENGTH AS len FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?`,
+      [col.table, col.name],
+    );
+    if (!existing) {
+      await conn.query(
+        `ALTER TABLE ${col.table} ADD COLUMN ${col.name} ${col.type}${col.after ? ` AFTER ${col.after}` : ''}`,
+      );
+      changes.push(`+${col.table}.${col.name}`);
+    } else if (col.minLength && Number(existing.len) < col.minLength) {
+      await conn.query(`ALTER TABLE ${col.table} MODIFY ${col.name} ${col.type}`);
+      changes.push(`~${col.table}.${col.name}`);
+    }
+  }
+  console.log(changes.length ? `migrations ok — ${changes.join(', ')}` : 'migrations ok — nothing to change');
 } finally {
   await conn.end();
 }

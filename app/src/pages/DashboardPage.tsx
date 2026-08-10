@@ -18,6 +18,7 @@ import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import PageHeader from '../components/PageHeader';
 import StatCard from '../components/StatCard';
+import CompanyLogo from '../components/CompanyLogo';
 import DueChip from '../components/StatusChip';
 import GenerateReportDialog from '../components/GenerateReportDialog';
 import type { Lead } from '../data/types';
@@ -132,7 +133,8 @@ export default function DashboardPage() {
                 <TableRow>
                   <TableCell>Organization</TableCell>
                   <TableCell>Target persona</TableCell>
-                  <TableCell>Industry</TableCell>
+                  <TableCell>Role</TableCell>
+                  <TableCell>Vertical</TableCell>
                   <TableCell>Next report due</TableCell>
                   <TableCell align="right" />
                 </TableRow>
@@ -143,10 +145,14 @@ export default function DashboardPage() {
                   const status = getDueStatus(lead);
                   return (
                     <TableRow key={lead.id} hover>
-                      <TableCell sx={{ fontWeight: 600 }}>{lead.organization}</TableCell>
-                      <TableCell>
-                        {lead.personaName} · {lead.personaTitle}
+                      <TableCell sx={{ fontWeight: 600 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
+                          <CompanyLogo lead={lead} size={26} />
+                          {lead.organization}
+                        </Box>
                       </TableCell>
+                      <TableCell>{lead.personaName}</TableCell>
+                      <TableCell sx={{ color: brand.muted }}>{lead.personaTitle}</TableCell>
                       <TableCell>{lead.industry}</TableCell>
                       <TableCell>
                         <DueChip lead={lead} />

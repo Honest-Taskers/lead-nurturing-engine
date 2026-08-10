@@ -5,17 +5,23 @@
 CREATE TABLE IF NOT EXISTS lne_leads (
   id CHAR(36) NOT NULL PRIMARY KEY,
   organization VARCHAR(255) NOT NULL,
+  -- "Vertical" in the source spreadsheet
   industry VARCHAR(120) NOT NULL,
   website VARCHAR(255) NULL,
+  -- logo.dev URL, derived from the website domain (see services/logo.ts)
+  logo_url VARCHAR(500) NULL,
   headquarters VARCHAR(255) NULL,
   org_size VARCHAR(120) NULL,
   locations_reach VARCHAR(255) NULL,
   hiring_signal VARCHAR(255) NULL,
+  -- One row per target persona: an organization with two contacts gets two rows
   persona_name VARCHAR(120) NOT NULL,
   persona_title VARCHAR(160) NOT NULL,
-  emails VARCHAR(255) NULL,
-  linkedin_url VARCHAR(255) NULL,
-  phone VARCHAR(40) NULL,
+  emails VARCHAR(500) NULL,
+  linkedin_url VARCHAR(500) NULL,
+  -- "LinkedIn / Contact Path": profile and/or company page used to reach them
+  contact_path VARCHAR(500) NULL,
+  phone VARCHAR(120) NULL,
   mailing_address VARCHAR(255) NULL,
   assigned_rep VARCHAR(80) NOT NULL,
   last_report_date DATE NULL,

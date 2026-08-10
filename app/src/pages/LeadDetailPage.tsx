@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import Avatar from '@mui/material/Avatar';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Card from '@mui/material/Card';
@@ -15,12 +14,13 @@ import AutoAwesomeOutlinedIcon from '@mui/icons-material/AutoAwesomeOutlined';
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import { Link as RouterLink, useNavigate, useParams } from 'react-router-dom';
 import PageHeader from '../components/PageHeader';
+import CompanyLogo from '../components/CompanyLogo';
 import GenerateReportDialog from '../components/GenerateReportDialog';
 import { formatShortDate, getDueStatus } from '../data/types';
 import { brand } from '../theme';
 import { useApp } from '../context/AppContext';
 
-function MetaRow({ items }: { items: Array<[string, string | undefined]> }) {
+function MetaRow({ items }: { items: Array<[string, string | null | undefined]> }) {
   return (
     <Box sx={{ display: 'flex', flexWrap: 'wrap', columnGap: 3, rowGap: 0.75 }}>
       {items
@@ -73,13 +73,6 @@ export default function LeadDetailPage() {
             ? 'No report yet'
             : `Due ${formatShortDate(due.date)}`;
 
-  const initials = lead.personaName
-    .split(' ')
-    .map((p) => p[0])
-    .slice(0, 2)
-    .join('')
-    .toUpperCase();
-
   return (
     <>
       <PageHeader
@@ -118,9 +111,7 @@ export default function LeadDetailPage() {
               Target persona
             </Typography>
             <Box sx={{ display: 'flex', gap: 1.75, alignItems: 'center', mb: 2 }}>
-              <Avatar sx={{ width: 44, height: 44, bgcolor: brand.accentSoft, color: brand.blueInk, fontWeight: 700 }}>
-                {initials}
-              </Avatar>
+              <CompanyLogo lead={lead} size={44} />
               <Box>
                 <Typography sx={{ fontWeight: 700 }}>{lead.personaName}</Typography>
                 <Typography variant="body2" sx={{ color: brand.muted }}>
@@ -131,14 +122,32 @@ export default function LeadDetailPage() {
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
               <MetaRow
                 items={[
-                  ['Industry', lead.industry],
+                  ['Vertical', lead.industry],
                   ['Size', lead.orgSize],
                   ['HQ', lead.headquarters],
                 ]}
               />
               <MetaRow
                 items={[
+                  ['Website', lead.website],
+                  ['Reach', lead.locationsReach],
+                ]}
+              />
+              <MetaRow
+                items={[
                   ['Email', lead.emails],
+                  ['Phone', lead.phone],
+                ]}
+              />
+              <MetaRow
+                items={[
+                  ['LinkedIn', lead.linkedinUrl],
+                  ['Contact path', lead.contactPath],
+                ]}
+              />
+              <MetaRow
+                items={[
+                  ['Mailing address', lead.mailingAddress],
                   ['Rep', lead.assignedRep],
                 ]}
               />

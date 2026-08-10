@@ -3,8 +3,11 @@
 export interface Lead {
   id: string;
   organization: string;
+  /** "Vertical" in the source spreadsheet. */
   industry: string;
   website?: string | null;
+  /** logo.dev URL, derived from the website domain. */
+  logoUrl?: string | null;
   headquarters?: string | null;
   orgSize?: string | null;
   locationsReach?: string | null;
@@ -13,6 +16,8 @@ export interface Lead {
   personaTitle: string;
   emails?: string | null;
   linkedinUrl?: string | null;
+  /** LinkedIn / contact path: profile and/or company page used to reach them. */
+  contactPath?: string | null;
   phone?: string | null;
   mailingAddress?: string | null;
   assignedRep: string;

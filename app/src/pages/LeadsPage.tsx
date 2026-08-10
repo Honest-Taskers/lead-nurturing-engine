@@ -22,6 +22,7 @@ import AddIcon from '@mui/icons-material/Add';
 import SearchIcon from '@mui/icons-material/Search';
 import { Link as RouterLink, useNavigate, useSearchParams } from 'react-router-dom';
 import PageHeader from '../components/PageHeader';
+import CompanyLogo from '../components/CompanyLogo';
 import DueChip from '../components/StatusChip';
 import { focusFromTitle } from '../components/GenerateReportDialog';
 import { REPORT_TEMPLATES, formatShortDate, isDue } from '../data/types';
@@ -178,7 +179,7 @@ export default function LeadsPage() {
               }}
               sx={{ width: 170 }}
             >
-              <MenuItem value="all">Industry · All</MenuItem>
+              <MenuItem value="all">Vertical · All</MenuItem>
               {industries.map((i) => (
                 <MenuItem key={i} value={i}>
                   {i}
@@ -222,8 +223,9 @@ export default function LeadsPage() {
                   <Checkbox size="small" checked={allChecked} onChange={toggleAll} />
                 </TableCell>
                 <TableCell>Organization</TableCell>
-                <TableCell>Industry</TableCell>
+                <TableCell>Vertical</TableCell>
                 <TableCell>Target persona</TableCell>
+                <TableCell>Role</TableCell>
                 <TableCell>Last report</TableCell>
                 <TableCell>Next due</TableCell>
                 <TableCell align="right" />
@@ -235,11 +237,15 @@ export default function LeadsPage() {
                   <TableCell padding="checkbox">
                     <Checkbox size="small" checked={selected.has(lead.id)} onChange={() => toggleOne(lead.id)} />
                   </TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>{lead.organization}</TableCell>
-                  <TableCell>{lead.industry}</TableCell>
-                  <TableCell>
-                    {lead.personaName} · {lead.personaTitle}
+                  <TableCell sx={{ fontWeight: 600 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
+                      <CompanyLogo lead={lead} size={28} />
+                      {lead.organization}
+                    </Box>
                   </TableCell>
+                  <TableCell>{lead.industry}</TableCell>
+                  <TableCell>{lead.personaName}</TableCell>
+                  <TableCell sx={{ color: brand.muted }}>{lead.personaTitle}</TableCell>
                   <TableCell>{formatShortDate(lead.lastReportDate)}</TableCell>
                   <TableCell>
                     <DueChip lead={lead} />
@@ -258,7 +264,7 @@ export default function LeadsPage() {
               ))}
               {pageRows.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} sx={{ textAlign: 'center', py: 5, color: brand.faint }}>
+                  <TableCell colSpan={8} sx={{ textAlign: 'center', py: 5, color: brand.faint }}>
                     No leads match — adjust filters or import a list.
                   </TableCell>
                 </TableRow>

@@ -2,7 +2,18 @@ import { randomUUID } from 'node:crypto';
 import type { RowDataPacket, ResultSetHeader } from 'mysql2/promise';
 import { pool } from './pool.js';
 import { LEADS, REPORTS, SETTINGS } from './tables.js';
+import { logoUrlForWebsite, withLogoToken } from '../services/logo.js';
 import type { AppSettings, Lead, Report, ReportSection } from '../types.js';
+
+/**
+ * Fills in the logo.dev URL from the website domain unless one was supplied,
+ * so imported and hand-entered leads both get a logo without extra work.
+ */
+function withDerivedLogo(input: Partial<Lead>): Partial<Lead> {
+  if (input.logoUrl || !input.website) return input;
+  const logoUrl = logoUrlForWebsite(input.website);
+  return logoUrl ? { ...input, logoUrl } : input;
+}
 
 /* ---------- row mapping ---------- */
 
@@ -12,6 +23,7 @@ function rowToLead(r: RowDataPacket): Lead {
     organization: r.organization,
     industry: r.industry,
     website: r.website,
+    logoUrl: withLogoToken(r.logo_url),
     headquarters: r.headquarters,
     orgSize: r.org_size,
     locationsReach: r.locations_reach,
@@ -20,6 +32,7 @@ function rowToLead(r: RowDataPacket): Lead {
     personaTitle: r.persona_title,
     emails: r.emails,
     linkedinUrl: r.linkedin_url,
+    contactPath: r.contact_path,
     phone: r.phone,
     mailingAddress: r.mailing_address,
     assignedRep: r.assigned_rep,
@@ -65,6 +78,7 @@ const LEAD_COLUMNS: Record<string, keyof Lead> = {
   organization: 'organization',
   industry: 'industry',
   website: 'website',
+  logo_url: 'logoUrl',
   headquarters: 'headquarters',
   org_size: 'orgSize',
   locations_reach: 'locationsReach',
@@ -73,6 +87,7 @@ const LEAD_COLUMNS: Record<string, keyof Lead> = {
   persona_title: 'personaTitle',
   emails: 'emails',
   linkedin_url: 'linkedinUrl',
+  contact_path: 'contactPath',
   phone: 'phone',
   mailing_address: 'mailingAddress',
   assigned_rep: 'assignedRep',
@@ -93,12 +108,13 @@ export async function getLead(id: string): Promise<Lead | null> {
 }
 
 export async function createLead(input: Partial<Lead>): Promise<Lead> {
-  const id = input.id ?? randomUUID();
+  const lead = withDerivedLogo(input);
+  const id = lead.id ?? randomUUID();
   const cols = ['id'];
   const values: unknown[] = [id];
   for (const [col, key] of Object.entries(LEAD_COLUMNS)) {
     cols.push(col);
-    values.push(input[key] ?? null);
+    values.push(lead[key] ?? null);
   }
   await pool.query(
     `INSERT INTO ${LEADS} (${cols.join(',')}) VALUES (${cols.map(() => '?').join(',')})`,
@@ -108,12 +124,14 @@ export async function createLead(input: Partial<Lead>): Promise<Lead> {
 }
 
 export async function updateLead(id: string, input: Partial<Lead>): Promise<Lead | null> {
+  // A changed website re-derives the logo, unless the caller set one explicitly.
+  const lead = 'website' in input && !('logoUrl' in input) ? withDerivedLogo(input) : input;
   const sets: string[] = [];
   const values: unknown[] = [];
   for (const [col, key] of Object.entries(LEAD_COLUMNS)) {
-    if (key in input) {
+    if (key in lead) {
       sets.push(`${col} = ?`);
-      values.push(input[key] ?? null);
+      values.push(lead[key] ?? null);
     }
   }
   if (sets.length) {

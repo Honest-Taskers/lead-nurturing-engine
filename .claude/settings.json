@@ -59,7 +59,8 @@
       "Bash(nslookup nurture.honesttaskers.com)",
       "Bash(curl -s --max-time 15 https://lead-nurturing-engine-git-staging-honest-taskers.vercel.app/api/health)",
       "Bash(DATABASE_URL='mysql://2BUiRXwJyfnJYE7.root:F7468q33clkL5MBC@gateway01.us-east-1.prod.aws.tidbcloud.com:4000/nurture_staging?ssl={\"rejectUnauthorized\":true}' node -e ' *)",
-      "Bash(TEST_DATABASE_URL=\"mysql://2BUiRXwJyfnJYE7.root:F7468q33clkL5MBC@gateway01.us-east-1.prod.aws.tidbcloud.com:4000/nurture_dev?ssl={\\\\\"rejectUnauthorized\\\\\":true}\" npx vitest run)"
+      "Bash(TEST_DATABASE_URL=\"mysql://2BUiRXwJyfnJYE7.root:F7468q33clkL5MBC@gateway01.us-east-1.prod.aws.tidbcloud.com:4000/nurture_dev?ssl={\\\\\"rejectUnauthorized\\\\\":true}\" npx vitest run)",
+      "Bash(curl -s -o /dev/null -w \"no-token: %{http_code}\\\\n\" --max-time 15 \"https://img.logo.dev/commonspirit.org?size=128&format=png\")"
     ]
   }
 }

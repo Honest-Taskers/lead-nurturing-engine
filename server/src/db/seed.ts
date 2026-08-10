@@ -1,14 +1,12 @@
 /**
- * Idempotent schema + seed for the Railway MySQL instance.
- * Ports the phase-1 mock data; dates are relative to today so cadence states stay live.
- * Run with: npm run seed
+ * Idempotent demo data for dev and staging (never production).
+ * Dates are relative to today so cadence states stay live.
+ * Run with: npm run seed — which applies the schema first.
  */
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { pool } from './pool.js';
-import { LEADS, REPORTS, SETTINGS } from './tables.js';
+import { LEADS, REPORTS } from './tables.js';
+import { logoUrlForWebsite } from '../services/logo.js';
 import { REPORT_SECTIONS, type ReportSection } from '../types.js';
 
 // Demo data must never land in the shared production database.
@@ -16,8 +14,6 @@ if (process.env.NODE_ENV === 'production' && process.env.ALLOW_SEED !== '1') {
   console.error('Refusing to seed: NODE_ENV=production. Set ALLOW_SEED=1 to override (staging only).');
   process.exit(1);
 }
-
-const here = path.dirname(fileURLToPath(import.meta.url));
 
 const pad = (n: number) => String(n).padStart(2, '0');
 function iso(d: Date): string {
@@ -43,6 +39,34 @@ interface Seed {
   size: string;
   due: number | null; // days from today; null = never sent
 }
+
+/**
+ * Real domains for the well-known systems so logo.dev actually resolves a logo
+ * in the demo data. The fictional practices fall back to a synthetic domain.
+ */
+const DOMAINS: Record<string, string> = {
+  'CommonSpirit Health': 'commonspirit.org',
+  Ascension: 'ascension.org',
+  'Tenet Healthcare': 'tenethealth.com',
+  'HCA Healthcare': 'hcahealthcare.com',
+  Providence: 'providence.org',
+  'Trinity Health': 'trinity-health.org',
+  'Advocate Health': 'advocatehealth.org',
+  'Intermountain Health': 'intermountainhealthcare.org',
+  'Banner Health': 'bannerhealth.com',
+  'Sutter Health': 'sutterhealth.org',
+  'Mass General Brigham': 'massgeneralbrigham.org',
+  'Northwell Health': 'northwell.edu',
+  'Cleveland Clinic': 'clevelandclinic.org',
+  'Mayo Clinic': 'mayoclinic.org',
+  'Kaiser Permanente': 'kp.org',
+  Geisinger: 'geisinger.org',
+  'Ochsner Health': 'ochsner.org',
+  'Baylor Scott & White': 'bswhealth.com',
+  'Corewell Health': 'corewellhealth.org',
+  UPMC: 'upmc.com',
+  'Summit Orthopedics': 'summitortho.com',
+};
 
 const seeds: Seed[] = [
   { organization: 'CommonSpirit Health', industry: 'Hospital System', personaName: 'Steve Scharmann', personaTitle: 'VP of Revenue Cycle', hq: 'Chicago, IL', size: 'Enterprise; 150,000+', due: 0 },
@@ -106,72 +130,49 @@ function seedSections(lead: Seed, focus: string): ReportSection[] {
 }
 
 async function main() {
-  // 1. Schema — schema.sql sits next to this file in src/, but tsc does not
-  // copy .sql files to dist/, so fall back to the source location.
-  const schemaPath = [path.join(here, 'schema.sql'), path.join(here, '../../src/db/schema.sql')].find((p) => {
-    try { readFileSync(p); return true; } catch { return false; }
-  });
-  if (!schemaPath) throw new Error('schema.sql not found');
-  const schema = readFileSync(schemaPath, 'utf8');
-  for (const stmt of schema.split(/;\s*(?:\r?\n|$)/).filter((s) => s.trim())) {
-    await pool.query(stmt);
-  }
-  console.log('schema ok');
+  // Schema, migrations and the settings singleton are handled by
+  // scripts/apply-schema.mjs, which `npm run seed` runs first.
 
-  // Migration: editorial columns added in phase "report generation lock-in" (MySQL 8 has no ADD COLUMN IF NOT EXISTS)
-  const [cols] = await pool.query<import('mysql2/promise').RowDataPacket[]>(
-    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
-     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '${REPORTS}'`,
-  );
-  const existing = new Set(cols.map((c) => c.COLUMN_NAME as string));
-  if (!existing.has('dek')) await pool.query(`ALTER TABLE ${REPORTS} ADD COLUMN dek VARCHAR(500) NULL AFTER title`);
-  if (!existing.has('badge')) await pool.query(`ALTER TABLE ${REPORTS} ADD COLUMN badge VARCHAR(120) NULL AFTER dek`);
-  if (!existing.has('cover_image_url'))
-    await pool.query(`ALTER TABLE ${REPORTS} ADD COLUMN cover_image_url VARCHAR(255) NULL AFTER badge`);
-  // Report generation moved to OpenAI — migrate any legacy model selection
-  await pool.query(`UPDATE ${SETTINGS} SET ai_model = 'gpt-5.1' WHERE ai_model LIKE '%laude%'`);
-  console.log('migrations ok');
-
-  // 2. Settings singleton
-  await pool.query(
-    `INSERT INTO ${SETTINGS} (id, company_name, default_rep, cadence_days, default_sections, ai_prompt, ai_model)
-     VALUES (1, 'Honest Taskers', 'Jaya', 14, ?, ?, 'gpt-5.1')
-     ON DUPLICATE KEY UPDATE id = id`,
-    [
-      JSON.stringify(REPORT_SECTIONS),
-      'Write a concise, executive industry brief for {title} at {company} in {industry}. Cite real trends & publications. Warm, credible, non-salesy.',
-    ],
-  );
-  console.log('settings ok');
-
-  // 3. Leads + historical reports
+  // Leads + historical reports
   let leadsInserted = 0;
+  let leadsRefreshed = 0;
   let reportsInserted = 0;
   for (const s of seeds) {
     const sent = s.due !== null;
     const nextDue = sent ? rel(s.due!) : null;
     const lastReport = sent ? rel(s.due! - 14) : null;
     const [first, ...rest] = s.personaName.split(' ');
-    const domain = slug(s.organization).replace(/-/g, '') + '.org';
+    const domain = DOMAINS[s.organization] ?? `${slug(s.organization).replace(/-/g, '')}.org`;
     const leadId = randomUUID();
+
+    const contactPath = `https://www.linkedin.com/company/${slug(s.organization)}/`;
 
     const [dupes] = await pool.query<import('mysql2/promise').RowDataPacket[]>(
       `SELECT id FROM ${LEADS} WHERE organization = ? AND persona_name = ?`,
       [s.organization, s.personaName],
     );
-    if (dupes.length) continue; // already seeded — keep idempotent
+    if (dupes.length) {
+      // Already seeded: refresh the fields added since, keeping report history.
+      await pool.query(
+        `UPDATE ${LEADS} SET website = ?, logo_url = ?, contact_path = ? WHERE id = ?`,
+        [domain, logoUrlForWebsite(domain), contactPath, dupes[0].id],
+      );
+      leadsRefreshed += 1;
+      continue;
+    }
 
     await pool.query(
-      `INSERT INTO ${LEADS} (id, organization, industry, website, headquarters, org_size, locations_reach,
-                          hiring_signal, persona_name, persona_title, emails, linkedin_url,
+      `INSERT INTO ${LEADS} (id, organization, industry, website, logo_url, headquarters, org_size, locations_reach,
+                          hiring_signal, persona_name, persona_title, emails, linkedin_url, contact_path,
                           mailing_address, assigned_rep, last_report_date, next_due_date)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE organization = organization`,
       [
         leadId,
         s.organization,
         s.industry,
         domain,
+        logoUrlForWebsite(domain),
         s.hq,
         s.size,
         s.size.startsWith('Enterprise') ? '100+ facilities; multi-state' : null,
@@ -180,6 +181,7 @@ async function main() {
         s.personaTitle,
         `${first.toLowerCase()}.${rest.join('').toLowerCase()}@${domain}`,
         `linkedin.com/in/${slug(s.personaName)}`,
+        contactPath,
         s.hq,
         'Jaya',
         lastReport,
@@ -215,7 +217,9 @@ async function main() {
       }
     }
   }
-  console.log(`leads inserted: ${leadsInserted}, reports inserted: ${reportsInserted}`);
+  console.log(
+    `leads inserted: ${leadsInserted}, refreshed: ${leadsRefreshed}, reports inserted: ${reportsInserted}`,
+  );
 
   const [[leadCount]] = await pool.query<import('mysql2/promise').RowDataPacket[]>(`SELECT COUNT(*) AS c FROM ${LEADS}`);
   const [[reportCount]] = await pool.query<import('mysql2/promise').RowDataPacket[]>(`SELECT COUNT(*) AS c FROM ${REPORTS}`);

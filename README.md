@@ -37,6 +37,7 @@ npm run dev:app                      # Vite on :5173, proxies /api → :4000
 | --- | --- |
 | `DATABASE_URL` | MySQL connection URI |
 | `OPENAI_API_KEY` | Report + cover image generation (unset → deterministic stub reports) |
+| `LOGO_DEV_TOKEN` | logo.dev publishable token for company logos (unset → lettermark avatars) |
 | `PORT` | Local API port (default 4000; unused on Vercel) |
 | `NODE_ENV` | `production` disables CORS and blocks seeding |
 | `ALLOW_SEED` | `1` overrides the seed guard (staging only — never production) |

@@ -150,6 +150,13 @@ export default function LeadFormPage() {
               onChange={set('hiringSignal')}
               placeholder="Ongoing enterprise healthcare hiring"
             />
+            <Field
+              label="Logo URL"
+              hint="(auto-filled from the website via logo.dev)"
+              value={val('logoUrl')}
+              onChange={set('logoUrl')}
+              placeholder="https://img.logo.dev/commonspirit.org"
+            />
           </Box>
         </Card>
 
@@ -189,6 +196,13 @@ export default function LeadFormPage() {
               value={val('linkedinUrl')}
               onChange={set('linkedinUrl')}
               placeholder="linkedin.com/in/steve-scharmann"
+            />
+            <Field
+              label="LinkedIn / contact path"
+              hint="(profile or company page to reach them through)"
+              value={val('contactPath')}
+              onChange={set('contactPath')}
+              placeholder="linkedin.com/company/commonspirit-health/"
             />
             <Field
               label="Phone"

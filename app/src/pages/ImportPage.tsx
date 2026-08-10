@@ -15,16 +15,23 @@ import Typography from '@mui/material/Typography';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 import { useNavigate } from 'react-router-dom';
 import PageHeader from '../components/PageHeader';
+import { contactForPersona, parseContact, parsePersonas, splitBlocks } from '../data/importParse';
 import type { Lead } from '../data/types';
 import { brand } from '../theme';
 import { useApp } from '../context/AppContext';
 
+/** Mirrors the target-account spreadsheet's columns. */
 const TARGET_FIELDS = [
   { value: 'organization', label: 'Organization' },
-  { value: 'industry', label: 'Industry / Vertical' },
-  { value: 'persona', label: 'Target persona + title' },
-  { value: 'contact', label: 'Contact info' },
-  { value: 'orgSize', label: 'Org size' },
+  { value: 'industry', label: 'Vertical' },
+  { value: 'website', label: 'Website' },
+  { value: 'headquarters', label: 'Headquarters' },
+  { value: 'locationsReach', label: 'Locations / reach' },
+  { value: 'orgSize', label: 'Provider / organization size' },
+  { value: 'persona', label: 'RCM leader / target persona' },
+  { value: 'contact', label: 'LinkedIn / target (emails, phones)' },
+  { value: 'contactPath', label: 'LinkedIn / contact path' },
+  { value: 'hiringSignal', label: 'Open positions / hiring signal' },
   { value: 'skip', label: 'Do not import' },
 ] as const;
 
@@ -71,10 +78,16 @@ function parseCsv(text: string): string[][] {
 
 function guessMapping(header: string): (typeof TARGET_FIELDS)[number]['value'] {
   const h = header.toLowerCase();
-  // Size first: "Provider / Organization Size" must not match the organization rule.
+  // Order matters: "Provider / Organization Size" must not match the
+  // organization rule, and "LinkedIn / Contact Path" must not match contact.
   if (h.includes('size')) return 'orgSize';
+  if (h.includes('contact path') || h.includes('path')) return 'contactPath';
   if (h.includes('persona') || h.includes('leader') || h.includes('name') || h.includes('title')) return 'persona';
   if (h.includes('vertical') || h.includes('industry')) return 'industry';
+  if (h.includes('website') || h.includes('domain') || h.includes('url')) return 'website';
+  if (h.includes('headquarter') || h === 'hq') return 'headquarters';
+  if (h.includes('location') || h.includes('reach')) return 'locationsReach';
+  if (h.includes('hiring') || h.includes('position') || h.includes('opening')) return 'hiringSignal';
   if (h.includes('linkedin') || h.includes('email') || h.includes('contact') || h.includes('target')) return 'contact';
   if (h.includes('organi') || h.includes('company') || h.includes('account')) return 'organization';
   return 'skip';
@@ -103,42 +116,75 @@ export default function ImportPage() {
 
   const sample = useMemo(() => (file ? file.rows[0] ?? [] : []), [file]);
 
-  const handleImport = async () => {
-    if (!file) return;
-    const rows: Array<Partial<Lead>> = file.rows.map((r) => {
-      const lead: Partial<Lead> = {};
+  /**
+   * One spreadsheet row can list several people for the same organization, and
+   * each person becomes their own lead (own cadence, own reports) — so the
+   * lead count is usually higher than the row count.
+   */
+  const plannedLeads = useMemo(() => {
+    if (!file) return [];
+    const rows: Array<Partial<Lead>> = file.rows.flatMap((r) => {
+      const shared: Partial<Lead> = {};
+      let personaCell = '';
+      let contactCell = '';
+
       file.headers.forEach((_, i) => {
         const value = (r[i] ?? '').trim();
         if (!value) return;
         switch (mapping[i]) {
           case 'organization':
-            lead.organization = value;
+            shared.organization = value;
             break;
           case 'industry':
-            lead.industry = value;
+            shared.industry = value;
             break;
-          case 'persona': {
-            // "Steve Scharmann · VP Rev Cycle" or "Steve Scharmann - VP Rev Cycle"
-            const parts = value.split(/\s*[·|–—-]\s*/);
-            lead.personaName = lead.personaName || parts[0];
-            if (parts[1]) lead.personaTitle = lead.personaTitle || parts.slice(1).join(' · ');
+          case 'website':
+            shared.website = value;
             break;
-          }
-          case 'contact':
-            if (value.includes('@')) lead.emails = lead.emails || value;
-            else if (value.includes('linkedin')) lead.linkedinUrl = lead.linkedinUrl || value;
-            else lead.emails = lead.emails || value;
+          case 'headquarters':
+            shared.headquarters = value;
+            break;
+          case 'locationsReach':
+            shared.locationsReach = value;
             break;
           case 'orgSize':
-            lead.orgSize = value;
+            shared.orgSize = value;
+            break;
+          case 'hiringSignal':
+            shared.hiringSignal = value;
+            break;
+          case 'contactPath':
+            shared.contactPath = value.replace(/\s*\r?\n\s*/g, ' ');
+            break;
+          case 'persona':
+            personaCell = personaCell ? `${personaCell}\n\n${value}` : value;
+            break;
+          case 'contact':
+            contactCell = contactCell ? `${contactCell}\n\n${value}` : value;
             break;
         }
       });
-      return lead;
+
+      const personas = parsePersonas(personaCell);
+      const contactBlocks = splitBlocks(contactCell);
+      if (personas.length === 0) {
+        // No named contact — still import the organization with any contact details.
+        return [{ ...shared, ...parseContact(contactCell) }];
+      }
+      return personas.map((persona, index) => ({
+        ...shared,
+        personaName: persona.name,
+        personaTitle: persona.title,
+        ...contactForPersona(persona, index, contactBlocks),
+      }));
     });
-    const valid = rows.filter((r) => r.organization);
+    return rows.filter((r) => r.organization);
+  }, [file, mapping]);
+
+  const handleImport = async () => {
+    if (!file) return;
     try {
-      const { imported, skipped } = await importLeads(valid);
+      const { imported, skipped } = await importLeads(plannedLeads);
       setMsg(
         `Imported ${imported.toLocaleString()} lead${imported === 1 ? '' : 's'}` +
           (skipped ? ` · ${skipped} duplicate${skipped === 1 ? '' : 's'} skipped` : ''),
@@ -246,11 +292,12 @@ export default function ImportPage() {
 
             <Box sx={{ display: 'flex', alignItems: 'center' }}>
               <Typography variant="body2" sx={{ color: brand.faint }}>
-                Duplicates matched on <strong>Organization + persona</strong> will be skipped.
+                A row listing several people becomes one lead each. Duplicates matched on{' '}
+                <strong>Organization + persona</strong> will be skipped.
               </Typography>
               <Box sx={{ flex: 1 }} />
-              <Button variant="contained" onClick={() => void handleImport()}>
-                Import {file.rows.length.toLocaleString()} leads
+              <Button variant="contained" disabled={plannedLeads.length === 0} onClick={() => void handleImport()}>
+                Import {plannedLeads.length.toLocaleString()} lead{plannedLeads.length === 1 ? '' : 's'}
               </Button>
             </Box>
           </>

@@ -5,12 +5,19 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import request from 'supertest';
 
 const RUN = Boolean(process.env.TEST_DATABASE_URL);
 const here = path.dirname(fileURLToPath(import.meta.url));
+
+// Unique per run, and cleaned up afterwards, so the suite can be re-run
+// against a database that persists between runs (dev/staging), not just a
+// throwaway CI container.
+const TEST_ORG_PREFIX = 'ZZ Test Health System';
+const testOrg = `${TEST_ORG_PREFIX} ${randomUUID().slice(0, 8)}`;
 
 describe.runIf(RUN)('API integration', () => {
   let app: import('express').Express;
@@ -35,6 +42,8 @@ describe.runIf(RUN)('API integration', () => {
   });
 
   afterAll(async () => {
+    const { LEADS } = await import('./db/tables.js');
+    await pool?.query(`DELETE FROM ${LEADS} WHERE organization LIKE ?`, [`${TEST_ORG_PREFIX}%`]);
     await pool?.end();
   });
 
@@ -47,14 +56,17 @@ describe.runIf(RUN)('API integration', () => {
 
   it('POST /api/leads creates a lead and GET /api/leads returns it', async () => {
     const created = await request(app).post('/api/leads').send({
-      organization: 'Test Health System',
+      organization: testOrg,
       industry: 'Hospital System',
+      website: 'https://www.commonspirit.org',
       personaName: 'Pat Tester',
       personaTitle: 'VP of Testing',
     });
     expect(created.status).toBe(201);
     expect(created.body.id).toBeTruthy();
     expect(created.body.assignedRep).toBe('Jaya');
+    // Logo is derived from the website domain on create.
+    expect(created.body.logoUrl).toContain('img.logo.dev/commonspirit.org');
 
     const list = await request(app).get('/api/leads');
     expect(list.status).toBe(200);
@@ -62,7 +74,7 @@ describe.runIf(RUN)('API integration', () => {
 
     const detail = await request(app).get(`/api/leads/${created.body.id}`);
     expect(detail.status).toBe(200);
-    expect(detail.body.lead.organization).toBe('Test Health System');
+    expect(detail.body.lead.organization).toBe(testOrg);
     expect(detail.body.reports).toEqual([]);
   });
 

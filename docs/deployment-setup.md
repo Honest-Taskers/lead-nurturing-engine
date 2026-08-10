@@ -61,8 +61,15 @@ All environments use a single free [TiDB Cloud](https://tidbcloud.com) Serverles
    | --- | --- | --- |
    | `DATABASE_URL` | Production | the `nurture_prod` TiDB URI from step 2 |
    | `OPENAI_API_KEY` | Production | production key |
+   | `LOGO_DEV_TOKEN` | Production | publishable token from [logo.dev](https://logo.dev) (free) |
    | `DATABASE_URL` | Preview → *limit to branch `staging`* | the `nurture_staging` TiDB URI |
    | `OPENAI_API_KEY` | Preview → *limit to branch `staging`* | staging key (can be the same) |
+   | `LOGO_DEV_TOKEN` | Preview → *limit to branch `staging`* | same token |
+
+   Company logos come from logo.dev, which answers 401 without a token — leads
+   simply show lettermark avatars until `LOGO_DEV_TOKEN` is set. The token is
+   *publishable* (designed to be visible in image URLs), and it is added to
+   logo URLs as they leave the API, so rotating it needs no data changes.
 
    (`NODE_ENV=production` is set automatically by Vercel for both production and preview builds.)
 4. Project → **Settings → Git**: confirm the production branch is `main`.
