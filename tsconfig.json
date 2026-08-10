@@ -1,0 +1,14 @@
+{
+  "//": "Used by Vercel's @vercel/node builder when compiling api/index.ts (and the server sources it imports). Mirrors server/tsconfig.json — notably jsx, which reportPdf.tsx needs.",
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "jsx": "react-jsx",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true
+  },
+  "include": ["api", "server/src"]
+}

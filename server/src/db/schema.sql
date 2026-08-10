@@ -57,6 +57,14 @@ CREATE TABLE IF NOT EXISTS lne_settings (
   CONSTRAINT chk_lne_settings_singleton CHECK (id = 1)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- The app reads the settings singleton (id = 1) on almost every request;
+-- bootstrap it so a fresh database works without seeding demo data.
+INSERT IGNORE INTO lne_settings (id, company_name, default_rep, cadence_days, default_sections, ai_prompt, ai_model)
+VALUES (1, 'Honest Taskers', 'Jaya', 14,
+        JSON_ARRAY('Industry overview', 'Key 2026 trends', 'Top publications to follow', 'Hiring / talent insight', 'How Honest Taskers helps'),
+        'Write a concise, executive industry brief for {title} at {company} in {industry}. Cite real trends & publications. Warm, credible, non-salesy.',
+        'gpt-5.1');
+
 -- Generated report cover images. Stored in MySQL (not on disk) because the
 -- app runs on serverless hosting with no persistent filesystem.
 CREATE TABLE IF NOT EXISTS lne_report_images (
