@@ -47,7 +47,19 @@
       "Bash(netstat -ano)",
       "Bash(node -e ' *)",
       "Bash(curl -s --max-time 10 https://api.ipify.org)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(curl -s --max-time 15 https://nurture.honesttaskers.com/api/health)",
+      "Bash(curl -s --max-time 15 https://nurture-staging.honesttaskers.com/api/health)",
+      "Bash(curl -s -o /dev/null -D - --max-time 15 https://nurture.honesttaskers.com/api/health)",
+      "Bash(curl -s -o /dev/null -D - --max-time 15 https://nurture-staging.honesttaskers.com/api/health)",
+      "Bash(curl -s -o /dev/null -w \"root: %{http_code}\\\\n\" --max-time 15 https://nurture.honesttaskers.com/)",
+      "Bash(npx -y vercel@latest build --yes)",
+      "Bash(curl -s -o /dev/null -D - -w \"\\\\nstatus:%{http_code} bytes:%{size_download} time:%{time_total}s\\\\n\" --max-time 120 \"https://nurture-staging.honesttaskers.com/api/reports/eb007688-f71c-49c3-9bcc-5eb1e4662595/pdf\")",
+      "Bash(nslookup nurture-staging.honesttaskers.com)",
+      "Bash(nslookup nurture.honesttaskers.com)",
+      "Bash(curl -s --max-time 15 https://lead-nurturing-engine-git-staging-honest-taskers.vercel.app/api/health)",
+      "Bash(DATABASE_URL='mysql://2BUiRXwJyfnJYE7.root:F7468q33clkL5MBC@gateway01.us-east-1.prod.aws.tidbcloud.com:4000/nurture_staging?ssl={\"rejectUnauthorized\":true}' node -e ' *)",
+      "Bash(TEST_DATABASE_URL=\"mysql://2BUiRXwJyfnJYE7.root:F7468q33clkL5MBC@gateway01.us-east-1.prod.aws.tidbcloud.com:4000/nurture_dev?ssl={\\\\\"rejectUnauthorized\\\\\":true}\" npx vitest run)"
     ]
   }
 }

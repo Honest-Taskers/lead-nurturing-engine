@@ -15,7 +15,7 @@
  *   Mallory          -> Source Sans 3  (bylines, labels, captions, footer)
  */
 import React from 'react';
-import { Document, Page, View, Text, Image, Font, StyleSheet, Svg, Rect, Circle, Path, Defs, LinearGradient, Stop, renderToBuffer } from '@react-pdf/renderer';
+import { Document, Page, View, Text, Image, Font, StyleSheet, Svg, Rect, Circle, Path, Defs, LinearGradient, Stop, renderToStream } from '@react-pdf/renderer';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
@@ -663,7 +663,12 @@ function BackCoverPage({ report, lead, settings }: { report: Report; lead: Lead;
 
 /* ------------------------------------------------------------------ entry */
 
-export async function renderReportPdf(report: Report, lead: Lead, settings: AppSettings): Promise<Buffer> {
+/**
+ * Streams rather than buffers: Vercel caps a buffered function response at
+ * 4.5MB (a cover-illustrated report exceeds that), while streamed responses
+ * have no size limit and start reaching the browser immediately.
+ */
+export async function renderReportPdf(report: Report, lead: Lead, settings: AppSettings): Promise<NodeJS.ReadableStream> {
   const cover = await coverBuffer(report);
   const doc = (
     <Document
@@ -678,5 +683,5 @@ export async function renderReportPdf(report: Report, lead: Lead, settings: AppS
       <BackCoverPage report={report} lead={lead} settings={settings} />
     </Document>
   );
-  return await renderToBuffer(doc);
+  return await renderToStream(doc);
 }

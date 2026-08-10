@@ -52,9 +52,10 @@ router.post('/generate', async (req, res) => {
     });
     res.status(201).json(report);
   } catch (err) {
+    // Log the full error server-side only — raw messages can carry secrets
+    // (e.g. a malformed Authorization header echoes the API key).
     console.error('report generation failed:', err);
-    const message = err instanceof Error ? err.message : 'Report generation failed';
-    res.status(502).json({ error: message });
+    res.status(502).json({ error: 'Report generation failed — check the server logs for details' });
   }
 });
 
@@ -76,11 +77,16 @@ router.get('/:id/pdf', async (req, res) => {
   if (!lead) return res.status(404).json({ error: 'Lead not found' });
   const settings = await repo.getSettings();
   try {
-    const pdf = await renderReportPdf(report, lead, settings);
+    const stream = await renderReportPdf(report, lead, settings);
     const safeName = report.title.replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '-') || 'report';
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${safeName}.pdf"`);
-    res.send(pdf);
+    stream.on('error', (err) => {
+      // Headers are already out, so the download just aborts; log for diagnosis.
+      console.error('pdf stream failed:', err);
+      res.destroy();
+    });
+    stream.pipe(res);
   } catch (err) {
     console.error('pdf render failed:', err);
     res.status(500).json({ error: 'PDF rendering failed' });

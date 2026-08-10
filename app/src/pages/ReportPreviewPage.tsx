@@ -12,6 +12,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import PageHeader from '../components/PageHeader';
 import ReportDocument from '../components/ReportDocument';
 import { brand } from '../theme';
+import { downloadBlob } from '../api/download';
 import { useApp } from '../context/AppContext';
 
 function MetaItem({ k, v }: { k: string; v: string }) {
@@ -82,12 +83,7 @@ export default function ReportPreviewPage() {
       if (!res.ok) throw new Error('PDF rendering failed');
       const blob = await res.blob();
       const safeName = report.title.replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '-') || 'report';
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${safeName}.pdf`;
-      a.click();
-      URL.revokeObjectURL(url);
+      downloadBlob(blob, `${safeName}.pdf`);
       setMsg('PDF downloaded');
     } catch (err) {
       setMsg(err instanceof Error ? err.message : 'PDF export failed');

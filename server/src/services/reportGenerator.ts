@@ -256,11 +256,15 @@ async function generateCoverImage(client: OpenAI, prompt: string): Promise<strin
     prompt: fullPrompt,
     size: '1024x1536',
     quality: 'medium',
+    // JPEG keeps covers ~10x smaller than PNG. That matters: the image embeds
+    // twice in the print PDF, and Vercel caps function responses at ~4.5MB.
+    output_format: 'jpeg',
+    output_compression: 80,
   });
   const b64 = result.data?.[0]?.b64_json;
   if (!b64) throw new Error('no image data returned');
-  const filename = `cover-${randomUUID()}.png`;
-  await saveImage(filename, 'image/png', Buffer.from(b64, 'base64'));
+  const filename = `cover-${randomUUID()}.jpg`;
+  await saveImage(filename, 'image/jpeg', Buffer.from(b64, 'base64'));
   return `/api/images/${filename}`;
 }
 
