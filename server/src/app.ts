@@ -21,7 +21,7 @@ app.use(express.json({ limit: '5mb' })); // logo data URLs
 app.get('/api/health', async (_req, res) => {
   try {
     await pool.query('SELECT 1');
-    res.json({ ok: true, db: 'up', aiConfigured: Boolean(process.env.OPENAI_API_KEY) });
+    res.json({ ok: true, db: 'up', aiConfigured: Boolean(process.env.ANTHROPIC_API_KEY) });
   } catch {
     res.status(503).json({ ok: false, db: 'down' });
   }

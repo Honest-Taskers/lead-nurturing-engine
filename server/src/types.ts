@@ -39,16 +39,29 @@ export interface ReportSection {
   callouts?: Array<{ title: string; body: string }> | null;
   /** Magazine pull quote. */
   quote?: { text: string; attribution: string; role?: string | null } | null;
-  /** Horizontal bar chart in the sample report's survey style. */
+  /** Analytical exhibit (direct-labeled bars; `highlight` marks the one conclusion datapoint). */
   chart?: {
     question: string;
-    data: Array<{ label: string; value: number; suffix?: string | null }>;
+    data: Array<{ label: string; value: number; suffix?: string | null; highlight?: boolean }>;
     source?: string | null;
   } | null;
-  /** Big-numeral lessons ("1 Don't jump to tech first."). */
-  numberedItems?: Array<{ title: string; body: string }> | null;
-  /** Square-bullet subtopics ("■ Uncertain payer relations."). */
+  /** Big-number stat callouts rendered as a display strip ("42% · denial rate increase"). */
+  stats?: Array<{ value: string; label: string; source?: string | null }> | null;
+  /**
+   * Numbered items. On the action agenda each carries the full
+   * action / why-it-matters / first step / KPI / timing structure.
+   */
+  numberedItems?: Array<{
+    title: string;
+    body: string;
+    firstStep?: string | null;
+    kpi?: string | null;
+    timing?: string | null;
+  }> | null;
+  /** Numbered key questions ("Key questions for a {role}") or square-bullet subtopics. */
   subTopics?: Array<{ title: string; body: string }> | null;
+  /** Closing note only: what public/company/industry information informed the report. */
+  methodology?: string | null;
 }
 
 export type ReportStatus = 'generated' | 'sent';
@@ -61,8 +74,12 @@ export interface Report {
   dek?: string | null;
   /** Publisher badge, e.g. "HONEST TASKERS · AUG 2026". */
   badge?: string | null;
-  /** Generated cover illustration (served from /api/images/...). */
+  /** Cover photo/illustration (served from /api/images/...). */
   coverImageUrl?: string | null;
+  /** Interior feature-opener photo (served from /api/images/...). */
+  sectionImageUrl?: string | null;
+  /** Photo attribution, e.g. "Jane Doe / Unsplash". */
+  imageCredit?: string | null;
   focus: string;
   template: string;
   sections: ReportSection[];

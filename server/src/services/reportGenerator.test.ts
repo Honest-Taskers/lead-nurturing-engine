@@ -54,7 +54,7 @@ const input: GenerateInput = {
   // As composed by the server: legacy client names normalized, mandatory sections injected.
   sections: normalizeRequestedSections(['Industry overview', 'Key 2026 trends', 'How Honest Taskers helps']),
   aiPrompt: 'Write a brief for {title} at {company} in {industry}.',
-  aiModel: 'gpt-5.1',
+  aiModel: 'claude-sonnet-5',
   companyName: 'Honest Taskers',
 };
 
@@ -82,9 +82,9 @@ describe('normalizeRequestedSections', () => {
   });
 });
 
-describe('generateReport (stub path, no OPENAI_API_KEY)', () => {
+describe('generateReport (stub path, no ANTHROPIC_API_KEY)', () => {
   beforeEach(() => {
-    vi.stubEnv('OPENAI_API_KEY', '');
+    vi.stubEnv('ANTHROPIC_API_KEY', '');
   });
 
   it('returns a deterministic stub report with the composed sections in order', async () => {
@@ -104,7 +104,7 @@ describe('generateReport (stub path, no OPENAI_API_KEY)', () => {
 
 describe('validateReport', () => {
   const base = async () => {
-    vi.stubEnv('OPENAI_API_KEY', '');
+    vi.stubEnv('ANTHROPIC_API_KEY', '');
     return generateReport(input);
   };
 
@@ -114,10 +114,32 @@ describe('validateReport', () => {
     expect(validateReport(reversed, input.sections).hard.some((v) => v.includes('order'))).toBe(true);
   });
 
-  it('flags missing or duplicate charts', async () => {
+  it('flags missing charts', async () => {
     const report = await base();
     const noChart = { ...report, sections: report.sections.map((s) => ({ ...s, chart: null })) };
     expect(validateReport(noChart, input.sections).hard.some((v) => v.includes('chart'))).toBe(true);
+  });
+
+  it('accepts up to three charts but flags more', async () => {
+    const report = await base();
+    const chart = report.sections.find((s) => s.chart)!.chart!;
+    const withCharts = (n: number) => ({
+      ...report,
+      sections: report.sections.map((s, i) => ({ ...s, chart: i < n ? chart : null })),
+    });
+    expect(validateReport(withCharts(3), input.sections).hard.some((v) => v.includes('chart'))).toBe(false);
+    expect(validateReport(withCharts(4), input.sections).hard.some((v) => v.includes('chart'))).toBe(true);
+  });
+
+  it('soft-flags stat callouts without a source', async () => {
+    const report = await base();
+    const unsourced = {
+      ...report,
+      sections: report.sections.map((s, i) =>
+        i === 1 ? { ...s, stats: [{ value: '42%', label: 'denial growth', source: null }] } : s,
+      ),
+    };
+    expect(validateReport(unsourced, input.sections).soft.some((v) => v.includes('stat'))).toBe(true);
   });
 
   it('flags a takeaways section with too few items', async () => {

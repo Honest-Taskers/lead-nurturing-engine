@@ -48,6 +48,8 @@ const COLUMNS = [
   { table: 'lne_leads', name: 'emails', type: 'VARCHAR(500) NULL', minLength: 500 },
   { table: 'lne_leads', name: 'linkedin_url', type: 'VARCHAR(500) NULL', minLength: 500 },
   { table: 'lne_leads', name: 'phone', type: 'VARCHAR(120) NULL', minLength: 120 },
+  { table: 'lne_reports', name: 'section_image_url', type: 'VARCHAR(255) NULL', after: 'cover_image_url' },
+  { table: 'lne_reports', name: 'image_credit', type: 'VARCHAR(160) NULL', after: 'section_image_url' },
 ];
 
 // Keep in sync with DEFAULT_SENDER_ID in src/db/tables.ts.

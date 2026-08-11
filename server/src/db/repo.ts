@@ -81,6 +81,8 @@ function rowToReport(r: RowDataPacket): Report {
     dek: r.dek,
     badge: r.badge,
     coverImageUrl: r.cover_image_url,
+    sectionImageUrl: r.section_image_url,
+    imageCredit: r.image_credit,
     focus: r.focus,
     template: r.template,
     sections: parseJson<ReportSection[]>(r.sections, []),
@@ -213,8 +215,8 @@ export async function getReport(id: string): Promise<Report | null> {
 export async function createReport(report: Omit<Report, 'id'> & { id?: string }): Promise<Report> {
   const id = report.id ?? randomUUID();
   await pool.query(
-    `INSERT INTO ${REPORTS} (id, lead_id, title, dek, badge, cover_image_url, focus, template, sections, publications, status, generated_at, sent_at, model)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO ${REPORTS} (id, lead_id, title, dek, badge, cover_image_url, section_image_url, image_credit, focus, template, sections, publications, status, generated_at, sent_at, model)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       report.leadId,
@@ -222,6 +224,8 @@ export async function createReport(report: Omit<Report, 'id'> & { id?: string })
       report.dek ?? null,
       report.badge ?? null,
       report.coverImageUrl ?? null,
+      report.sectionImageUrl ?? null,
+      report.imageCredit ?? null,
       report.focus,
       report.template,
       JSON.stringify(report.sections),
@@ -440,7 +444,7 @@ export async function getSettings(senderId: string = DEFAULT_SENDER_ID): Promise
     brandPrimary: sender.brandPrimary,
     brandSecondary: sender.brandSecondary,
     fonts: sender.fonts,
-    apiKeyConfigured: Boolean(process.env.OPENAI_API_KEY),
+    apiKeyConfigured: Boolean(process.env.ANTHROPIC_API_KEY),
   };
 }
 

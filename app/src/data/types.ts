@@ -47,11 +47,21 @@ export interface ReportSection {
   /** Horizontal bar chart in the sample report's survey style. */
   chart?: {
     question: string;
-    data: Array<{ label: string; value: number; suffix?: string | null }>;
+    data: Array<{ label: string; value: number; suffix?: string | null; highlight?: boolean }>;
     source?: string | null;
   } | null;
-  /** Big-numeral lessons ("1 Don't jump to tech first."). */
-  numberedItems?: Array<{ title: string; body: string }> | null;
+  /** Big-number stat callouts rendered as a display strip. */
+  stats?: Array<{ value: string; label: string; source?: string | null }> | null;
+  /** Numbered items; agenda items carry first step / KPI / timing. */
+  numberedItems?: Array<{
+    title: string;
+    body: string;
+    firstStep?: string | null;
+    kpi?: string | null;
+    timing?: string | null;
+  }> | null;
+  /** Closing note only: methodology paragraph. */
+  methodology?: string | null;
   /** Square-bullet subtopics ("■ Uncertain payer relations."). */
   subTopics?: Array<{ title: string; body: string }> | null;
 }
@@ -63,6 +73,8 @@ export interface Report {
   dek?: string | null;
   badge?: string | null;
   coverImageUrl?: string | null;
+  sectionImageUrl?: string | null;
+  imageCredit?: string | null;
   focus: string;
   template: string;
   sections: ReportSection[];

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import * as repo from '../db/repo.js';
-import { generateReport } from '../services/reportGenerator.js';
+import { generateReport, type GenerationPhase } from '../services/reportGenerator.js';
 import { renderReportPdf } from '../services/reportPdf.js';
 import { normalizeRequestedSections } from '../types.js';
 
@@ -14,6 +14,12 @@ const generateSchema = z.object({
   sections: z.array(z.string()).min(1),
 });
 
+/**
+ * Report generation. When the client sends `Accept: text/event-stream`, the
+ * response is an SSE stream of `progress` events (one per pipeline phase)
+ * ending with a `done` (the saved report) or `error` event, and closing the
+ * connection cancels the in-flight generation. Plain JSON otherwise.
+ */
 router.post('/generate', async (req, res) => {
   const parsed = generateSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'leadId, focus, template, and sections are required' });
@@ -23,22 +29,48 @@ router.post('/generate', async (req, res) => {
   // Brand + report prefs come from the lead's owning sender.
   const settings = await repo.getSettings(lead.senderId ?? undefined);
 
-  try {
-    const generated = await generateReport({
-      lead,
-      focus: parsed.data.focus,
-      template: parsed.data.template,
-      // Mandatory sections (exec summary, takeaways, closing) wrap whatever
-      // body sections the client requested; legacy names are normalized.
-      sections: normalizeRequestedSections(parsed.data.sections),
-      aiPrompt: settings.aiPrompt,
-      aiModel: settings.aiModel,
-      companyName: settings.companyName,
-      about: settings.about,
-      brandPrimary: settings.brandPrimary,
-      brandSecondary: settings.brandSecondary,
-    });
+  const streaming = (req.headers.accept ?? '').includes('text/event-stream');
+  const controller = new AbortController();
+  let sendEvent: (event: string, data: unknown) => void = () => {};
 
+  if (streaming) {
+    res.status(200);
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+    sendEvent = (event, data) => {
+      if (!res.writableEnded) res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    };
+    // Client closed the tab or pressed Stop → abort the model calls.
+    req.on('close', () => {
+      if (!res.writableEnded) controller.abort();
+    });
+  }
+
+  try {
+    const generated = await generateReport(
+      {
+        lead,
+        focus: parsed.data.focus,
+        template: parsed.data.template,
+        // Mandatory sections (exec summary, takeaways, closing) wrap whatever
+        // body sections the client requested; legacy names are normalized.
+        sections: normalizeRequestedSections(parsed.data.sections),
+        aiPrompt: settings.aiPrompt,
+        aiModel: settings.aiModel,
+        companyName: settings.companyName,
+        about: settings.about,
+        brandPrimary: settings.brandPrimary,
+        brandSecondary: settings.brandSecondary,
+      },
+      {
+        signal: controller.signal,
+        onProgress: (phase: GenerationPhase, detail?: string) => sendEvent('progress', { phase, detail }),
+      },
+    );
+
+    sendEvent('progress', { phase: 'saving', detail: 'Saving the report' });
     const pad = (n: number) => String(n).padStart(2, '0');
     const now = new Date();
     const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
@@ -49,6 +81,8 @@ router.post('/generate', async (req, res) => {
       dek: generated.dek,
       badge: generated.badge,
       coverImageUrl: generated.coverImageUrl,
+      sectionImageUrl: generated.sectionImageUrl,
+      imageCredit: generated.imageCredit,
       focus: parsed.data.focus,
       template: parsed.data.template,
       sections: generated.sections,
@@ -57,12 +91,30 @@ router.post('/generate', async (req, res) => {
       generatedAt: today,
       model: generated.model,
     });
-    res.status(201).json(report);
+
+    if (streaming) {
+      sendEvent('done', report);
+      res.end();
+    } else {
+      res.status(201).json(report);
+    }
   } catch (err) {
+    if (controller.signal.aborted) {
+      // The user cancelled — nothing to report, nobody listening.
+      console.log('report generation cancelled by client');
+      if (!res.writableEnded) res.end();
+      return;
+    }
     // Log the full error server-side only — raw messages can carry secrets
     // (e.g. a malformed Authorization header echoes the API key).
     console.error('report generation failed:', err);
-    res.status(502).json({ error: 'Report generation failed — check the server logs for details' });
+    const message = 'Report generation failed — check the server logs for details';
+    if (streaming) {
+      sendEvent('error', { error: message });
+      res.end();
+    } else {
+      res.status(502).json({ error: message });
+    }
   }
 });
 

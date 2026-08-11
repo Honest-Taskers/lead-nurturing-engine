@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS lne_senders (
   cadence_days INT NOT NULL DEFAULT 14,
   default_sections JSON NOT NULL,
   ai_prompt TEXT NOT NULL,
-  ai_model VARCHAR(80) NOT NULL DEFAULT 'gpt-5.1',
+  ai_model VARCHAR(80) NOT NULL DEFAULT 'claude-sonnet-5',
   is_default TINYINT(1) NOT NULL DEFAULT 0,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -75,6 +75,9 @@ CREATE TABLE IF NOT EXISTS lne_reports (
   dek VARCHAR(500) NULL,
   badge VARCHAR(120) NULL,
   cover_image_url VARCHAR(255) NULL,
+  -- Interior feature-opener photo (Unsplash) + attribution
+  section_image_url VARCHAR(255) NULL,
+  image_credit VARCHAR(160) NULL,
   focus VARCHAR(120) NOT NULL DEFAULT '',
   template VARCHAR(160) NOT NULL DEFAULT '',
   sections JSON NOT NULL,
@@ -95,7 +98,7 @@ CREATE TABLE IF NOT EXISTS lne_settings (
   cadence_days INT NOT NULL DEFAULT 14,
   default_sections JSON NOT NULL,
   ai_prompt TEXT NOT NULL,
-  ai_model VARCHAR(80) NOT NULL DEFAULT 'gpt-5.1',
+  ai_model VARCHAR(80) NOT NULL DEFAULT 'claude-sonnet-5',
   logo_data_url MEDIUMTEXT NULL,
   CONSTRAINT chk_lne_settings_singleton CHECK (id = 1)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -106,7 +109,7 @@ INSERT IGNORE INTO lne_settings (id, company_name, default_rep, cadence_days, de
 VALUES (1, 'Honest Taskers', 'Jaya', 14,
         JSON_ARRAY('Industry overview', 'Key 2026 trends', 'Top publications to follow', 'Hiring / talent insight', 'How Honest Taskers helps'),
         'Write a concise, executive industry brief for {title} at {company} in {industry}. Cite real trends & publications. Warm, credible, non-salesy.',
-        'gpt-5.1');
+        'claude-sonnet-5');
 
 -- Migrate the legacy settings singleton into the default (Honest Taskers)
 -- sender. Fixed UUID + INSERT IGNORE = idempotent; runs after the settings

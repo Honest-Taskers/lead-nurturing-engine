@@ -15,9 +15,9 @@ import { brand } from '../theme';
 import { useApp } from '../context/AppContext';
 
 const MODELS = [
-  { id: 'gpt-5.1', label: 'GPT-5.1 · most capable' },
-  { id: 'gpt-5-mini', label: 'GPT-5 mini · fast & low cost' },
-  { id: 'gpt-4o', label: 'GPT-4o · legacy' },
+  { id: 'claude-sonnet-5', label: 'Claude Sonnet 5 · recommended' },
+  { id: 'claude-opus-5', label: 'Claude Opus 5 · most capable' },
+  { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5 · fast & low cost' },
 ];
 const CADENCES = [
   { days: 7, label: 'Every week (7 days)' },
@@ -287,7 +287,7 @@ export default function SettingsPage() {
                   select
                   fullWidth
                   size="small"
-                  value={MODELS.some((m) => m.id === form.aiModel) ? form.aiModel : 'gpt-5.1'}
+                  value={MODELS.some((m) => m.id === form.aiModel) ? form.aiModel : 'claude-sonnet-5'}
                   onChange={(e) => setForm((f) => ({ ...f, aiModel: e.target.value }))}
                 >
                   {MODELS.map((m) => (
@@ -303,7 +303,7 @@ export default function SettingsPage() {
                   <Chip label="Configured on server" sx={{ bgcolor: brand.okSoft, color: brand.okInk }} />
                 ) : (
                   <Typography variant="body2" sx={{ color: brand.warnInk, pt: 0.5 }}>
-                    Not configured — set <code>OPENAI_API_KEY</code> in <code>server/.env</code> and restart the
+                    Not configured — set <code>ANTHROPIC_API_KEY</code> in <code>server/.env</code> and restart the
                     server. Reports use a stub until then.
                   </Typography>
                 )}

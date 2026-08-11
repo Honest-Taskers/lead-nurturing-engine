@@ -122,7 +122,11 @@ function SurveyChart({ chart, kicker }: { chart: NonNullable<ReportSection['char
   );
 }
 
-function NumberedItems({ items }: { items: Array<{ title: string; body: string }> }) {
+function NumberedItems({
+  items,
+}: {
+  items: Array<{ title: string; body: string; firstStep?: string | null; kpi?: string | null; timing?: string | null }>;
+}) {
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, my: 2.5 }}>
       {items.map((item, i) => (
@@ -151,6 +155,38 @@ function NumberedItems({ items }: { items: Array<{ title: string; body: string }
             <Typography component="span" sx={{ ...bodySx, fontSize: '0.9rem' }}>
               {item.body}
             </Typography>
+            {(item.firstStep || item.kpi || item.timing) && (
+              <Box sx={{ mt: 0.75 }}>
+                {item.timing && (
+                  <Typography
+                    component="span"
+                    sx={{
+                      display: 'inline-block',
+                      bgcolor: brand.accentSoft,
+                      color: brand.blueInk,
+                      fontWeight: 700,
+                      fontSize: '0.7rem',
+                      px: 1,
+                      py: 0.25,
+                      borderRadius: '4px',
+                      mb: 0.5,
+                    }}
+                  >
+                    {item.timing}
+                  </Typography>
+                )}
+                {item.firstStep && (
+                  <Typography variant="body2" sx={{ color: brand.muted, fontSize: '0.82rem' }}>
+                    <strong>First step</strong> — {item.firstStep}
+                  </Typography>
+                )}
+                {item.kpi && (
+                  <Typography variant="body2" sx={{ color: brand.muted, fontSize: '0.82rem' }}>
+                    <strong>Proof of progress</strong> — {item.kpi}
+                  </Typography>
+                )}
+              </Box>
+            )}
           </Box>
         </Box>
       ))}
@@ -195,10 +231,33 @@ function Section({ section, first }: { section: ReportSection; first: boolean })
           ))}
         </Box>
       )}
+      {section.stats && section.stats.length > 0 && (
+        <Box sx={{ display: 'flex', gap: 2, my: 2, borderTop: `2px solid ${brand.blueInk}`, pt: 1.5, flexWrap: 'wrap' }}>
+          {section.stats.slice(0, 4).map((t, i) => (
+            <Box key={i} sx={{ flex: '1 1 120px' }}>
+              <Typography sx={{ fontWeight: 800, fontSize: '1.6rem', color: brand.blueInk, lineHeight: 1 }}>{t.value}</Typography>
+              <Typography variant="caption" sx={{ color: brand.muted, display: 'block', mt: 0.5 }}>
+                {t.label}
+                {t.source ? ` — ${t.source}` : ''}
+              </Typography>
+            </Box>
+          ))}
+        </Box>
+      )}
       {section.chart && <SurveyChart chart={section.chart} kicker={section.kicker} />}
       {section.quote && <PullQuote quote={section.quote} />}
       {section.numberedItems && section.numberedItems.length > 0 && <NumberedItems items={section.numberedItems} />}
       {section.subTopics && section.subTopics.length > 0 && <SubTopics items={section.subTopics} />}
+      {section.methodology && (
+        <Box sx={{ mt: 2, pt: 1.5, borderTop: `1px solid ${brand.line}` }}>
+          <Typography variant="caption" sx={{ color: brand.muted, fontWeight: 700, letterSpacing: 1, display: 'block', mb: 0.5 }}>
+            METHODOLOGY
+          </Typography>
+          <Typography variant="body2" sx={{ color: brand.muted, fontSize: '0.82rem' }}>
+            {section.methodology}
+          </Typography>
+        </Box>
+      )}
       {/* Legacy callouts from earlier reports */}
       {section.callouts && section.callouts.length > 0 && (
         <Box sx={{ display: 'flex', gap: 1.5, mt: 1.5, flexWrap: 'wrap' }}>

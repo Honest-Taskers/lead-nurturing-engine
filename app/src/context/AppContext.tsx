@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { AppSettings, Lead, Report, Sender, TeamMember } from '../data/types';
-import { api, setActiveSenderId } from '../api/client';
+import { api, generateReportStream, setActiveSenderId, type GenerationProgress } from '../api/client';
 
 /**
  * App store backed by the Express + MySQL API (server/).
@@ -25,6 +25,7 @@ interface AppContextValue {
   generateReport: (
     leadId: string,
     opts: { focus: string; template: string; sections: string[] },
+    stream?: { onProgress?: (p: GenerationProgress) => void; signal?: AbortSignal },
   ) => Promise<Report>;
   markAsSent: (reportId: string) => Promise<void>;
   saveSettings: (s: Partial<AppSettings>) => Promise<void>;
@@ -56,7 +57,7 @@ const FALLBACK_SETTINGS: AppSettings = {
     'Top publications to follow',
   ],
   aiPrompt: '',
-  aiModel: 'gpt-5.1',
+  aiModel: 'claude-sonnet-5',
   apiKeyConfigured: false,
 };
 
@@ -208,8 +209,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   const generateReport = useCallback(
-    async (leadId: string, opts: { focus: string; template: string; sections: string[] }) => {
-      const report = await api.generateReport({ leadId, ...opts });
+    async (
+      leadId: string,
+      opts: { focus: string; template: string; sections: string[] },
+      stream?: { onProgress?: (p: GenerationProgress) => void; signal?: AbortSignal },
+    ) => {
+      const report = await generateReportStream({ leadId, ...opts }, stream ?? {});
       setReports((rs) => mergeReports(rs, [report]));
       setReportStats((s) => ({ ...s, total: s.total + 1 }));
       return report;

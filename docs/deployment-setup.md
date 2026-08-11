@@ -60,10 +60,10 @@ All environments use a single free [TiDB Cloud](https://tidbcloud.com) Serverles
    | Variable | Environment | Value |
    | --- | --- | --- |
    | `DATABASE_URL` | Production | the `nurture_prod` TiDB URI from step 2 |
-   | `OPENAI_API_KEY` | Production | production key |
+   | `ANTHROPIC_API_KEY` | Production | production key |
    | `LOGO_DEV_TOKEN` | Production | publishable token from [logo.dev](https://logo.dev) (free) |
    | `DATABASE_URL` | Preview → *limit to branch `staging`* | the `nurture_staging` TiDB URI |
-   | `OPENAI_API_KEY` | Preview → *limit to branch `staging`* | staging key (can be the same) |
+   | `ANTHROPIC_API_KEY` | Preview → *limit to branch `staging`* | staging key (can be the same) |
    | `LOGO_DEV_TOKEN` | Preview → *limit to branch `staging`* | same token |
 
    Company logos come from logo.dev, which answers 401 without a token — leads

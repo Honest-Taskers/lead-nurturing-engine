@@ -35,7 +35,9 @@ export function logoUrlForWebsite(website?: string | null): string | null {
  */
 export function withLogoToken(url?: string | null): string | null {
   if (!url) return null;
-  const token = process.env.LOGO_DEV_TOKEN;
+  // LOGO_DEV_PUBLISHABLE_KEY is the same publishable (pk_) token under the
+  // name the logo.dev dashboard uses; accept either.
+  const token = process.env.LOGO_DEV_TOKEN ?? process.env.LOGO_DEV_PUBLISHABLE_KEY;
   if (!token || !url.includes('img.logo.dev') || url.includes('token=')) return url;
   return `${url}${url.includes('?') ? '&' : '?'}token=${encodeURIComponent(token)}`;
 }

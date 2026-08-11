@@ -133,6 +133,6 @@ export const defaultSettings: AppSettings = {
   defaultSections: [...BODY_SECTIONS],
   aiPrompt:
     'Write a concise, executive industry brief for {title} at {company} in {industry}. Cite real trends & publications. Warm, credible, non-salesy.',
-  aiModel: 'gpt-5.1',
+  aiModel: 'claude-sonnet-5',
   apiKeyConfigured: false,
 };

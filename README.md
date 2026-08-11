@@ -22,7 +22,7 @@ All three databases live in one free TiDB Cloud Serverless cluster (MySQL-compat
 Requires Node 22+ (`.nvmrc`).
 
 ```bash
-cp server/.env.example server/.env   # fill in DATABASE_URL (+ OPENAI_API_KEY for real reports)
+cp server/.env.example server/.env   # fill in DATABASE_URL (+ ANTHROPIC_API_KEY for real reports)
 npm --prefix server install
 npm --prefix app install
 npm run db:schema                    # apply schema (idempotent)
@@ -36,7 +36,7 @@ npm run dev:app                      # Vite on :5173, proxies /api → :4000
 | Var | Purpose |
 | --- | --- |
 | `DATABASE_URL` | MySQL connection URI |
-| `OPENAI_API_KEY` | Report + cover image generation (unset → deterministic stub reports) |
+| `ANTHROPIC_API_KEY` | Report + cover image generation (unset → deterministic stub reports) |
 | `LOGO_DEV_TOKEN` | logo.dev publishable token for company logos (unset → lettermark avatars) |
 | `PORT` | Local API port (default 4000; unused on Vercel) |
 | `NODE_ENV` | `production` disables CORS and blocks seeding |
