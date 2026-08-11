@@ -1,8 +1,20 @@
-import type { AppSettings, Lead, Report } from '../data/types';
+import type { AppSettings, Lead, Report, Sender, TeamMember } from '../data/types';
+
+/**
+ * Active sender for API scoping — set by AppContext before any scoped call.
+ * Absent header = the server's default (Honest Taskers) sender.
+ */
+let activeSenderId: string | null = null;
+export function setActiveSenderId(id: string | null): void {
+  activeSenderId = id;
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`/api${path}`, {
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(activeSenderId ? { 'X-Sender-Id': activeSenderId } : {}),
+    },
     ...init,
   });
   if (!res.ok) {
@@ -37,4 +49,19 @@ export const api = {
   getSettings: () => request<AppSettings>('/settings'),
   updateSettings: (s: Partial<AppSettings>) =>
     request<AppSettings>('/settings', { method: 'PUT', body: JSON.stringify(s) }),
+  // Senders + team (multi-tenant; not scoped by the header)
+  listSenders: () => request<Sender[]>('/senders'),
+  createSender: (s: Partial<Sender> & { name: string }) =>
+    request<Sender>('/senders', { method: 'POST', body: JSON.stringify(s) }),
+  updateSender: (id: string, s: Partial<Sender>) =>
+    request<Sender>(`/senders/${id}`, { method: 'PUT', body: JSON.stringify(s) }),
+  listTeam: (senderId: string) => request<TeamMember[]>(`/senders/${senderId}/team`),
+  addTeamMember: (senderId: string, m: Partial<TeamMember> & { name: string }) =>
+    request<TeamMember>(`/senders/${senderId}/team`, { method: 'POST', body: JSON.stringify(m) }),
+  updateTeamMember: (senderId: string, memberId: string, m: Partial<TeamMember>) =>
+    request<TeamMember>(`/senders/${senderId}/team/${memberId}`, { method: 'PUT', body: JSON.stringify(m) }),
+  deleteTeamMember: async (senderId: string, memberId: string) => {
+    const res = await fetch(`/api/senders/${senderId}/team/${memberId}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error(`Request failed (${res.status})`);
+  },
 };

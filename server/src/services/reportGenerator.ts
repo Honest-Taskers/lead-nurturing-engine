@@ -4,7 +4,8 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { saveImage } from '../db/images.js';
-import type { Lead, ReportSection } from '../types.js';
+import { DEFAULT_PRIMARY, DEFAULT_SECONDARY } from './palette.js';
+import { sectionRole, type Lead, type ReportSection } from '../types.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 // Candidate roots cover local dev (src or dist next to server/) and the
@@ -36,6 +37,11 @@ export interface GenerateInput {
   aiPrompt: string;
   aiModel: string;
   companyName: string;
+  /** Sender's "about" blurb — grounds the closing note. */
+  about?: string | null;
+  /** Sender brand colors — injected into the cover illustration prompt. */
+  brandPrimary?: string | null;
+  brandSecondary?: string | null;
 }
 
 export interface GeneratedReport {
@@ -177,6 +183,53 @@ function fillTemplate(template: string, lead: Lead): string {
     .replaceAll('{industry}', lead.industry);
 }
 
+type ParsedReport = GeneratedReport & { coverImagePrompt?: string | null };
+
+/**
+ * Structural validation of a generated report against the requested sections.
+ * Hard violations get one repair attempt; soft violations are logged only.
+ */
+export function validateReport(
+  parsed: ParsedReport,
+  requestedSections: string[],
+): { hard: string[]; soft: string[] } {
+  const hard: string[] = [];
+  const soft: string[] = [];
+  const keys = parsed.sections.map((s) => s.key);
+
+  if (keys.join('|') !== requestedSections.join('|')) {
+    hard.push(
+      `sections must be exactly [${requestedSections.join(' | ')}] in that order; got [${keys.join(' | ')}]`,
+    );
+  }
+
+  const charts = parsed.sections.filter((s) => s.chart);
+  if (charts.length !== 1) {
+    hard.push(`exactly one section must carry a chart; got ${charts.length}`);
+  } else {
+    const bars = charts[0].chart!.data ?? [];
+    if (bars.length < 3 || bars.length > 6 || bars.some((b) => typeof b.value !== 'number' || Number.isNaN(b.value))) {
+      hard.push(`the chart needs 3-6 bars with numeric values; got ${bars.length}`);
+    }
+  }
+
+  const takeaways = parsed.sections.find((s) => sectionRole(s.key) === 'takeaways');
+  if (takeaways) {
+    const n = takeaways.numberedItems?.length ?? 0;
+    if (n < 4 || n > 6) hard.push(`Actionable takeaways needs 4-6 numberedItems; got ${n}`);
+  }
+
+  const summary = parsed.sections.find((s) => sectionRole(s.key) === 'exec-summary');
+  if (summary && !summary.body?.trim()) hard.push('Executive summary body is empty');
+
+  const quotes = parsed.sections.filter((s) => s.quote).length;
+  if (quotes < 2) soft.push(`fewer than 2 quotes (${quotes})`);
+  if (parsed.title.split(/\s+/).length > 8) soft.push('title exceeds 8 words');
+  if (!parsed.publications?.length) soft.push('publications list is empty');
+
+  return { hard, soft };
+}
+
 export async function generateReport(input: GenerateInput): Promise<GeneratedReport> {
   if (!process.env.OPENAI_API_KEY) {
     return stubReport(input);
@@ -201,33 +254,73 @@ export async function generateReport(input: GenerateInput): Promise<GeneratedRep
     `Template / tone: ${input.template}`,
     `Sections to produce (exactly these keys, in this order): ${input.sections.join(' | ')}`,
     `Sender company: ${input.companyName}`,
+    input.about ? `About the sender (grounds the Closing note — do not sell): ${input.about}` : null,
+    `Sender brand colors for the cover illustration: primary ${input.brandPrimary ?? DEFAULT_PRIMARY}, accent ${input.brandSecondary ?? DEFAULT_SECONDARY}`,
     `Current month for the badge: ${new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' }).toUpperCase()}`,
   ]
     .filter((l) => l !== null)
     .join('\n');
+
+  const startedAt = Date.now();
+  const textFormat = {
+    format: {
+      type: 'json_schema' as const,
+      name: 'industry_report',
+      schema: REPORT_SCHEMA as unknown as Record<string, unknown>,
+      strict: true,
+    },
+  };
 
   const response = await client.responses.create({
     model,
     instructions: loadSkill(),
     input: userMessage,
     tools: [{ type: 'web_search' }],
-    text: {
-      format: {
-        type: 'json_schema',
-        name: 'industry_report',
-        schema: REPORT_SCHEMA as unknown as Record<string, unknown>,
-        strict: true,
-      },
-    },
+    text: textFormat,
   });
 
-  const parsed = JSON.parse(response.output_text) as GeneratedReport & { coverImagePrompt?: string | null };
+  let parsed = JSON.parse(response.output_text) as ParsedReport;
 
-  // Cover illustration — sample-report pop-art style in HT colors.
+  // Structural validation with one fast repair pass (no web search — the
+  // content already exists, only the shape is off). Skipped when the 300s
+  // serverless budget is running low; a slightly-off report beats a timeout.
+  let { hard, soft } = validateReport(parsed, input.sections);
+  if (hard.length && Date.now() - startedAt < 180_000) {
+    console.warn('report failed validation, attempting repair:', hard);
+    try {
+      const repair = await client.responses.create({
+        model,
+        instructions: loadSkill(),
+        input: [
+          'The report JSON below violates the output contract. Return a corrected version of the SAME report:',
+          'fix ONLY the listed violations, changing nothing else. Do not re-research or rewrite content.',
+          '',
+          `Violations:\n- ${hard.join('\n- ')}`,
+          '',
+          `Required section keys, in order: ${input.sections.join(' | ')}`,
+          '',
+          `Report JSON:\n${response.output_text}`,
+        ].join('\n'),
+        text: textFormat,
+      });
+      const repaired = JSON.parse(repair.output_text) as ParsedReport;
+      const recheck = validateReport(repaired, input.sections);
+      if (recheck.hard.length < hard.length) {
+        parsed = repaired;
+        ({ hard, soft } = recheck);
+      }
+    } catch (err) {
+      console.warn('repair pass failed (continuing with original):', err);
+    }
+  }
+  if (hard.length) console.warn('report shipped with unresolved violations:', hard);
+  if (soft.length) console.warn('report soft violations:', soft);
+
+  // Cover illustration — generated last so a repaired report never wastes an image.
   let coverImageUrl: string | null = null;
   if (parsed.coverImagePrompt) {
     try {
-      coverImageUrl = await generateCoverImage(client, parsed.coverImagePrompt);
+      coverImageUrl = await generateCoverImage(client, parsed.coverImagePrompt, input);
     } catch (err) {
       console.warn('cover image generation failed (continuing without):', err);
     }
@@ -244,10 +337,12 @@ export async function generateReport(input: GenerateInput): Promise<GeneratedRep
   };
 }
 
-async function generateCoverImage(client: OpenAI, prompt: string): Promise<string> {
+async function generateCoverImage(client: OpenAI, prompt: string, input: GenerateInput): Promise<string> {
+  const primary = input.brandPrimary ?? DEFAULT_PRIMARY;
+  const accent = input.brandSecondary ?? DEFAULT_SECONDARY;
   const fullPrompt =
     `${prompt}. Style: stylized editorial comic portrait with visible halftone dot texture, ` +
-    `dramatic radial sunburst background in warm gold (#F7B84A) and deep navy (#203667), ` +
+    `dramatic radial sunburst background in accent (${accent}) and deep primary (${primary}) brand tones, ` +
     `dark shadowed lower third suitable for overlaying a title, subject dominating the frame, ` +
     `full-bleed magazine cover composition, high contrast print aesthetic, ` +
     `absolutely no text, letters, words, or logos anywhere in the image.`;
@@ -275,21 +370,37 @@ function stubReport(input: GenerateInput): GeneratedReport {
   const badge = `${input.companyName.toUpperCase()} · ${new Date()
     .toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
     .toUpperCase()}`;
+  const focusLower = input.focus.toLowerCase();
+  const firstName = lead.personaName.split(' ')[0];
   const bodies: Record<string, ReportSection> = {
+    'Executive summary': {
+      key: 'Executive summary',
+      kicker: 'EXECUTIVE SUMMARY',
+      heading: `What ${year} demands of ${focusLower}`,
+      body:
+        `${lead.industry}s enter ${year} balancing margin pressure with rising volumes, and ${focusLower} sits squarely in the middle of both. ` +
+        `For a ${lead.personaTitle} at ${lead.organization}, three forces dominate the year: staffing costs that outpace reimbursement, payer friction that lengthens every cycle, and automation moving from pilots to production.\n` +
+        `This report distills what peers are measuring, where the leaders are investing, and the steps worth taking this quarter.`,
+      bullets: [
+        `Where ${focusLower} margins are leaking in ${year}`,
+        'The workforce-readiness gap, in numbers',
+        'Five moves peers are making this quarter',
+      ],
+    },
     'Industry overview': {
       key: 'Industry overview',
       heading: `${input.focus} transformation accelerates`,
-      body: `${lead.industry}s enter ${year} balancing margin pressure with rising volumes. For ${lead.organization}, staffing costs and payer friction remain the biggest operational drags on ${input.focus.toLowerCase()} performance.`,
+      body: `${lead.industry}s enter ${year} balancing margin pressure with rising volumes. For ${lead.organization}, staffing costs and payer friction remain the biggest operational drags on ${focusLower} performance.\nAcross the sector, leaders describe the same pattern: volume grows, experienced staff get harder to keep, and every point of denial rate now maps directly to margin.`,
       quote: {
         text: 'We know we have to decrease cost to collect, and technology is a major play for how we can do that.',
         attribution: 'Industry revenue cycle leader',
         role: null,
       },
     },
-    'Key 2026 trends': {
-      key: 'Key 2026 trends',
+    'Key trends & data': {
+      key: 'Key trends & data',
       kicker: 'SURVEY QUESTION',
-      heading: `Leaders fear their teams aren't ready for the ${input.focus.toLowerCase()} of the future`,
+      heading: `Leaders fear their teams aren't ready for the ${focusLower} of the future`,
       body: 'How prepared is your current workforce for the skills required over the next five years?',
       chart: {
         question: 'How prepared is your current workforce for the skills required over the next five years?',
@@ -318,17 +429,32 @@ function stubReport(input: GenerateInput): GeneratedReport {
         { title: 'Be selective with pilots.', body: 'Work only with partners willing to ingest feedback and turn around improvement quickly.' },
         { title: 'Be brave.', body: 'With margins tight the room for error is small — but waiting too long risks falling meaningfully behind.' },
       ],
+      quote: {
+        text: 'The teams that keep their best people are the ones that took the volume work off their desks first.',
+        attribution: 'Health system operations adviser',
+        role: null,
+      },
     },
-    'How Honest Taskers helps': {
-      key: 'How Honest Taskers helps',
-      kicker: 'SUPPLEMENT',
-      heading: `Treating ${input.focus.toLowerCase()} as a strategic asset, not a support function`,
-      body: `${input.companyName} provides trained virtual assistants for ${input.focus.toLowerCase()} teams so ${lead.personaName.split(' ')[0]}'s staff can focus on exceptions instead of volume.`,
+    'Actionable takeaways': {
+      key: 'Actionable takeaways',
+      kicker: 'ACTIONABLE TAKEAWAYS',
+      heading: 'Five moves worth making this quarter',
+      body: `Each of these can start inside ${firstName}'s current team, without new capital budget.`,
       numberedItems: [
-        { title: 'Cover the volume work.', body: 'Eligibility, prior authorization, claim follow-up, scheduling, and patient outreach handled by trained virtual assistants.' },
-        { title: 'Protect the education budget.', body: 'Free senior staff for the strategic, creative work that eases burnout and builds skills.' },
-        { title: 'Scale without the ramp.', body: 'Blended virtual teams flex with volume at a fraction of onshore cost.' },
+        { title: 'Baseline your denial codes.', body: `Pull the last 90 days of denials and rank by dollar impact. Most ${lead.industry.toLowerCase()} teams find three codes explain over half the leakage.` },
+        { title: 'Time-stamp the handoffs.', body: 'Measure elapsed time between eligibility check, authorization, and claim submission — the delays live between the steps, not inside them.' },
+        { title: 'Protect senior staff from volume work.', body: 'List every task your most experienced people did last week that a trained assistant could own; that list is your burnout-risk register.' },
+        { title: 'Set a payer-response SLA.', body: 'Track payer turnaround like you track your own team. What gets measured gets escalated.' },
+        { title: 'Pilot one automation, fully.', body: 'One workflow, instrumented end-to-end, beats five half-configured tools. Pick the highest-volume, lowest-judgment task first.' },
       ],
+    },
+    'Closing note': {
+      key: 'Closing note',
+      heading: 'Why this landed on your desk',
+      body:
+        `${input.companyName} spends its days inside ${focusLower} operations like yours — which is why reports like this one exist. ` +
+        `${input.about ? input.about + ' ' : ''}No pitch attached: if the ideas here spark a question, we're genuinely glad to compare notes.\n` +
+        `A fresh, ${lead.industry.toLowerCase()}-specific brief like this one lands every two weeks.`,
     },
   };
   return {

@@ -5,9 +5,12 @@
  */
 import { randomUUID } from 'node:crypto';
 import { pool } from './pool.js';
-import { LEADS, REPORTS } from './tables.js';
+import { DEFAULT_SENDER_ID, LEADS, REPORTS, SENDERS, TEAM_MEMBERS } from './tables.js';
 import { logoUrlForWebsite } from '../services/logo.js';
 import { REPORT_SECTIONS, type ReportSection } from '../types.js';
+
+/** Second demo sender so the switcher demos instantly (fixed id = idempotent). */
+const DEMO_SENDER_ID = '00000000-0000-4000-8000-000000000002';
 
 // Demo data must never land in the shared production database.
 if (process.env.NODE_ENV === 'production' && process.env.ALLOW_SEED !== '1') {
@@ -130,10 +133,40 @@ function seedSections(lead: Seed, focus: string): ReportSection[] {
 }
 
 async function main() {
-  // Schema, migrations and the settings singleton are handled by
-  // scripts/apply-schema.mjs, which `npm run seed` runs first.
+  // Schema, migrations, the settings singleton and the default sender are
+  // handled by scripts/apply-schema.mjs, which `npm run seed` runs first.
 
-  // Leads + historical reports
+  // 1. Sender branding + team (meeting 08/11: Diana, Christine, Hina)
+  await pool.query(
+    `UPDATE ${SENDERS} SET about = COALESCE(about, ?), brand_primary = '#203667', brand_secondary = '#F7B84A' WHERE id = ?`,
+    [
+      'Honest Taskers builds trained remote healthcare staffing teams — front desk, billing, eligibility and patient outreach — for clinics and health systems across the US.',
+      DEFAULT_SENDER_ID,
+    ],
+  );
+  const team = [
+    { id: '00000000-0000-4000-8000-000000001001', name: 'Diana', title: 'Client Partnerships', sort: 0 },
+    { id: '00000000-0000-4000-8000-000000001002', name: 'Christine', title: 'Client Partnerships', sort: 1 },
+    { id: '00000000-0000-4000-8000-000000001003', name: 'Hina', title: 'Client Partnerships', sort: 2 },
+  ];
+  for (const m of team) {
+    await pool.query(
+      `INSERT IGNORE INTO ${TEAM_MEMBERS} (id, sender_id, name, title, sort_order) VALUES (?, ?, ?, ?, ?)`,
+      [m.id, DEFAULT_SENDER_ID, m.name, m.title, m.sort],
+    );
+  }
+  await pool.query(
+    `INSERT IGNORE INTO ${SENDERS} (id, name, about, brand_primary, brand_secondary, default_rep, cadence_days, default_sections, ai_prompt, ai_model, is_default)
+     VALUES (?, 'Sterling Financial Partners', 'Independent wealth advisory serving founders and family offices.', '#0F3D2E', '#C9A227', 'Morgan', 14, ?, ?, 'gpt-5.1', 0)`,
+    [
+      DEMO_SENDER_ID,
+      JSON.stringify(['Industry overview', 'Key trends & data']),
+      'Write a concise, executive industry brief for {title} at {company} in {industry}. Cite real trends & publications. Warm, credible, non-salesy.',
+    ],
+  );
+  console.log('senders + team ok');
+
+  // 2. Leads + historical reports
   let leadsInserted = 0;
   let leadsRefreshed = 0;
   let reportsInserted = 0;
@@ -162,13 +195,14 @@ async function main() {
     }
 
     await pool.query(
-      `INSERT INTO ${LEADS} (id, organization, industry, website, logo_url, headquarters, org_size, locations_reach,
+      `INSERT INTO ${LEADS} (id, sender_id, organization, industry, website, logo_url, headquarters, org_size, locations_reach,
                           hiring_signal, persona_name, persona_title, emails, linkedin_url, contact_path,
                           mailing_address, assigned_rep, last_report_date, next_due_date)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE organization = organization`,
       [
         leadId,
+        DEFAULT_SENDER_ID,
         s.organization,
         s.industry,
         domain,

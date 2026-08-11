@@ -31,6 +31,7 @@ const TARGET_FIELDS = [
   { value: 'persona', label: 'RCM leader / target persona' },
   { value: 'contact', label: 'LinkedIn / target (emails, phones)' },
   { value: 'contactPath', label: 'LinkedIn / contact path' },
+  { value: 'photoUrl', label: 'Photo URL (headshot)' },
   { value: 'hiringSignal', label: 'Open positions / hiring signal' },
   { value: 'skip', label: 'Do not import' },
 ] as const;
@@ -81,6 +82,7 @@ function guessMapping(header: string): (typeof TARGET_FIELDS)[number]['value'] {
   // Order matters: "Provider / Organization Size" must not match the
   // organization rule, and "LinkedIn / Contact Path" must not match contact.
   if (h.includes('size')) return 'orgSize';
+  if (h.includes('photo') || h.includes('headshot') || h.includes('picture')) return 'photoUrl';
   if (h.includes('contact path') || h.includes('path')) return 'contactPath';
   if (h.includes('persona') || h.includes('leader') || h.includes('name') || h.includes('title')) return 'persona';
   if (h.includes('vertical') || h.includes('industry')) return 'industry';
@@ -155,6 +157,9 @@ export default function ImportPage() {
             break;
           case 'contactPath':
             shared.contactPath = value.replace(/\s*\r?\n\s*/g, ' ');
+            break;
+          case 'photoUrl':
+            shared.photoUrl = value.split(/\s+/)[0];
             break;
           case 'persona':
             personaCell = personaCell ? `${personaCell}\n\n${value}` : value;

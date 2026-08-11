@@ -10,7 +10,7 @@ import Snackbar from '@mui/material/Snackbar';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import PageHeader from '../components/PageHeader';
-import { REPORT_SECTIONS } from '../data/types';
+import { BODY_SECTIONS, MANDATORY_SECTIONS } from '../data/types';
 import { brand } from '../theme';
 import { useApp } from '../context/AppContext';
 
@@ -70,6 +70,10 @@ export default function SettingsPage() {
         aiPrompt: form.aiPrompt,
         aiModel: form.aiModel,
         logoDataUrl: form.logoDataUrl ?? null,
+        about: form.about ?? null,
+        ...(form.brandPrimary ? { brandPrimary: form.brandPrimary } : {}),
+        ...(form.brandSecondary ? { brandSecondary: form.brandSecondary } : {}),
+        fonts: form.fonts ?? null,
       });
       setMsg('Settings saved');
     } catch (err) {
@@ -148,8 +152,51 @@ export default function SettingsPage() {
                   onChange={(e) => setForm((f) => ({ ...f, defaultRep: e.target.value }))}
                 />
               </Box>
+              <Box>
+                <FieldLabel>About (grounds the report&apos;s closing note)</FieldLabel>
+                <TextField
+                  fullWidth
+                  multiline
+                  minRows={2}
+                  size="small"
+                  value={form.about ?? ''}
+                  onChange={(e) => setForm((f) => ({ ...f, about: e.target.value }))}
+                />
+              </Box>
+              <Box sx={{ display: 'flex', gap: 3, alignItems: 'flex-end' }}>
+                <Box>
+                  <FieldLabel>Primary color</FieldLabel>
+                  <input
+                    type="color"
+                    value={form.brandPrimary ?? '#203667'}
+                    onChange={(e) => setForm((f) => ({ ...f, brandPrimary: e.target.value }))}
+                    style={{ width: 52, height: 36, border: 'none', background: 'none', cursor: 'pointer' }}
+                  />
+                </Box>
+                <Box>
+                  <FieldLabel>Accent color</FieldLabel>
+                  <input
+                    type="color"
+                    value={form.brandSecondary ?? '#F7B84A'}
+                    onChange={(e) => setForm((f) => ({ ...f, brandSecondary: e.target.value }))}
+                    style={{ width: 52, height: 36, border: 'none', background: 'none', cursor: 'pointer' }}
+                  />
+                </Box>
+                <Box sx={{ flex: 1 }}>
+                  <FieldLabel>Fonts (optional)</FieldLabel>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    value={form.fonts ?? ''}
+                    onChange={(e) => setForm((f) => ({ ...f, fonts: e.target.value }))}
+                    placeholder="e.g. Inter, Georgia"
+                  />
+                </Box>
+              </Box>
             </Box>
           </Card>
+
+          <TeamCard />
 
           <Card sx={{ p: 2.5 }}>
             <Typography variant="subtitle2" sx={{ mb: 2 }}>
@@ -191,7 +238,19 @@ export default function SettingsPage() {
                 columnGap: 1,
               }}
             >
-              {REPORT_SECTIONS.map((s) => (
+              {/* Mandatory structure — always included, server-enforced */}
+              {MANDATORY_SECTIONS.map((s) => (
+                <FormControlLabel
+                  key={s}
+                  control={<Checkbox size="small" checked disabled />}
+                  label={
+                    <Typography variant="body2" sx={{ color: brand.muted }}>
+                      {s}
+                    </Typography>
+                  }
+                />
+              ))}
+              {BODY_SECTIONS.map((s) => (
                 <FormControlLabel
                   key={s}
                   control={
@@ -262,5 +321,80 @@ export default function SettingsPage() {
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       />
     </>
+  );
+}
+
+/** Team members of the active sender — the "from" identities on reports. */
+function TeamCard() {
+  const { teamMembers, addTeamMember, updateTeamMember, removeTeamMember } = useApp();
+  const [draft, setDraft] = useState({ name: '', title: '', email: '' });
+  const [busy, setBusy] = useState(false);
+
+  const handleAdd = async () => {
+    if (!draft.name.trim()) return;
+    setBusy(true);
+    try {
+      await addTeamMember({
+        name: draft.name.trim(),
+        title: draft.title.trim() || null,
+        email: draft.email.trim() || null,
+        sortOrder: teamMembers.length,
+      });
+      setDraft({ name: '', title: '', email: '' });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card sx={{ p: 2.5 }}>
+      <Typography variant="subtitle2" sx={{ mb: 2 }}>
+        Team members{' '}
+        <Typography component="span" variant="caption" sx={{ color: brand.faint }}>
+          (the “from” identities on reports)
+        </Typography>
+      </Typography>
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+        {teamMembers.map((m) => (
+          <Box key={m.id} sx={{ display: 'flex', alignItems: 'center', gap: 1.5, border: `1px solid ${brand.line}`, borderRadius: '8px', px: 1.5, py: 1 }}>
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                {m.name}
+              </Typography>
+              <Typography variant="caption" sx={{ color: brand.muted }}>
+                {[m.title, m.email].filter(Boolean).join(' · ') || '—'}
+              </Typography>
+            </Box>
+            <Button
+              size="small"
+              color="inherit"
+              sx={{ color: brand.muted }}
+              onClick={() => {
+                const title = window.prompt(`Title for ${m.name}:`, m.title ?? '');
+                if (title !== null) void updateTeamMember(m.id, { title: title || null });
+              }}
+            >
+              Edit
+            </Button>
+            <Button size="small" color="inherit" sx={{ color: brand.muted }} onClick={() => void removeTeamMember(m.id)}>
+              Remove
+            </Button>
+          </Box>
+        ))}
+        {teamMembers.length === 0 && (
+          <Typography variant="body2" sx={{ color: brand.faint }}>
+            No team members yet.
+          </Typography>
+        )}
+        <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
+          <TextField size="small" placeholder="Name" value={draft.name} onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))} sx={{ flex: 1 }} />
+          <TextField size="small" placeholder="Title" value={draft.title} onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))} sx={{ flex: 1 }} />
+          <TextField size="small" placeholder="Email" value={draft.email} onChange={(e) => setDraft((d) => ({ ...d, email: e.target.value }))} sx={{ flex: 1 }} />
+          <Button size="small" variant="outlined" color="inherit" sx={{ borderColor: brand.line }} disabled={busy || !draft.name.trim()} onClick={() => void handleAdd()}>
+            Add
+          </Button>
+        </Box>
+      </Box>
+    </Card>
   );
 }

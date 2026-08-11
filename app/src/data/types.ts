@@ -2,6 +2,8 @@
 
 export interface Lead {
   id: string;
+  /** Owning sender (organization using the platform). */
+  senderId?: string | null;
   // Organization
   organization: string;
   /** "Vertical" in the source spreadsheet. */
@@ -9,6 +11,8 @@ export interface Lead {
   website?: string;
   /** logo.dev URL, derived server-side from the website domain. */
   logoUrl?: string | null;
+  /** Optional recipient headshot URL — drives the photo cover variant. */
+  photoUrl?: string | null;
   headquarters?: string;
   orgSize?: string;
   locationsReach?: string;
@@ -79,15 +83,77 @@ export interface AppSettings {
   /** Server-side indicator — the key itself never leaves the server. */
   apiKeyConfigured: boolean;
   logoDataUrl?: string | null;
+  /** Sender brand identity — drives the report palette and closing page. */
+  about?: string | null;
+  brandPrimary?: string | null;
+  brandSecondary?: string | null;
+  fonts?: string | null;
 }
 
+export interface Sender {
+  id: string;
+  name: string;
+  about?: string | null;
+  logoDataUrl?: string | null;
+  logoUrl?: string | null;
+  brandPrimary: string;
+  brandSecondary: string;
+  fonts?: string | null;
+  defaultRep: string;
+  cadenceDays: number;
+  defaultSections: string[];
+  aiPrompt: string;
+  aiModel: string;
+  isDefault: boolean;
+}
+
+export interface TeamMember {
+  id: string;
+  senderId: string;
+  name: string;
+  title?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  bio?: string | null;
+  sortOrder: number;
+}
+
+/**
+ * Canonical report structure (mirrors server/src/types.ts). The mandatory
+ * sections are injected server-side; the UI only offers the body sections.
+ */
 export const REPORT_SECTIONS = [
+  'Executive summary',
   'Industry overview',
-  'Key 2026 trends',
-  'Top publications to follow',
+  'Key trends & data',
   'Hiring / talent insight',
-  'How Honest Taskers helps',
+  'Top publications to follow',
+  'Actionable takeaways',
+  'Closing note',
 ] as const;
+
+export const MANDATORY_SECTIONS = ['Executive summary', 'Actionable takeaways', 'Closing note'] as const;
+
+export const BODY_SECTIONS = REPORT_SECTIONS.filter(
+  (s) => !(MANDATORY_SECTIONS as readonly string[]).includes(s),
+);
+
+export type SectionRole = 'exec-summary' | 'body' | 'takeaways' | 'closing';
+
+/** Maps a section key to its rendering role; legacy keys resolve too. */
+export function sectionRole(key: string): SectionRole {
+  switch (key) {
+    case 'Executive summary':
+      return 'exec-summary';
+    case 'Actionable takeaways':
+      return 'takeaways';
+    case 'Closing note':
+    case 'How Honest Taskers helps': // legacy closer
+      return 'closing';
+    default:
+      return 'body';
+  }
+}
 
 export const REPORT_TEMPLATES = [
   'Executive brief · confident, helpful',

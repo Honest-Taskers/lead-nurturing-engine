@@ -111,7 +111,16 @@ export default function LeadDetailPage() {
               Target persona
             </Typography>
             <Box sx={{ display: 'flex', gap: 1.75, alignItems: 'center', mb: 2 }}>
-              <CompanyLogo lead={lead} size={44} />
+              {lead.photoUrl ? (
+                <Box
+                  component="img"
+                  src={lead.photoUrl}
+                  alt={lead.personaName}
+                  sx={{ width: 44, height: 44, borderRadius: '50%', objectFit: 'cover', border: `1px solid ${brand.line}` }}
+                />
+              ) : (
+                <CompanyLogo lead={lead} size={44} />
+              )}
               <Box>
                 <Typography sx={{ fontWeight: 700 }}>{lead.personaName}</Typography>
                 <Typography variant="body2" sx={{ color: brand.muted }}>

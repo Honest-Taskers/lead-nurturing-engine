@@ -13,7 +13,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import AutoAwesomeOutlinedIcon from '@mui/icons-material/AutoAwesomeOutlined';
 import { useNavigate } from 'react-router-dom';
 import type { Lead } from '../data/types';
-import { REPORT_SECTIONS, REPORT_TEMPLATES } from '../data/types';
+import { BODY_SECTIONS, MANDATORY_SECTIONS, REPORT_TEMPLATES } from '../data/types';
 import { brand } from '../theme';
 import { useApp } from '../context/AppContext';
 
@@ -151,7 +151,19 @@ export default function GenerateReportDialog({ lead, open, onClose }: Props) {
             columnGap: 1.5,
           }}
         >
-          {REPORT_SECTIONS.map((s) => (
+          {/* Mandatory structure — always included, server-enforced */}
+          {MANDATORY_SECTIONS.map((s) => (
+            <FormControlLabel
+              key={s}
+              control={<Checkbox size="small" checked disabled />}
+              label={
+                <Typography variant="body2" sx={{ color: brand.muted }}>
+                  {s}
+                </Typography>
+              }
+            />
+          ))}
+          {BODY_SECTIONS.map((s) => (
             <FormControlLabel
               key={s}
               control={
@@ -170,7 +182,7 @@ export default function GenerateReportDialog({ lead, open, onClose }: Props) {
           <Box sx={{ mb: 1 }}>
             <LinearProgress sx={{ borderRadius: 2, height: 6, mb: 1.5 }} />
             <Typography variant="body2" sx={{ textAlign: 'center', color: brand.muted }}>
-              ✦ Claude is researching &amp; writing…
+              ✦ Researching &amp; writing — this can take a few minutes…
             </Typography>
           </Box>
         ) : (
@@ -197,7 +209,7 @@ export default function GenerateReportDialog({ lead, open, onClose }: Props) {
           variant="caption"
           sx={{ display: 'block', textAlign: 'center', color: brand.faint, mt: 1.5 }}
         >
-          ~20s · Claude researches &amp; writes, personalized to this lead
+          AI researches &amp; writes a 6–10 page report personalized to this lead
         </Typography>
       </Box>
     </Dialog>

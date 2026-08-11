@@ -3,8 +3,10 @@ import express from 'express';
 import cors from 'cors';
 import { pool } from './db/pool.js';
 import { getImage } from './db/images.js';
+import { resolveSender } from './middleware/sender.js';
 import leadsRouter from './routes/leads.js';
 import reportsRouter from './routes/reports.js';
+import sendersRouter from './routes/senders.js';
 import settingsRouter from './routes/settings.js';
 
 const app = express();
@@ -34,9 +36,10 @@ app.get('/api/images/:name', async (req, res) => {
   res.send(image.data);
 });
 
-app.use('/api/leads', leadsRouter);
-app.use('/api/reports', reportsRouter);
-app.use('/api/settings', settingsRouter);
+app.use('/api/senders', sendersRouter);
+app.use('/api/leads', resolveSender, leadsRouter);
+app.use('/api/reports', resolveSender, reportsRouter);
+app.use('/api/settings', resolveSender, settingsRouter);
 
 // Unknown API paths must return JSON, never fall through to the SPA.
 app.use('/api', (_req, res) => {

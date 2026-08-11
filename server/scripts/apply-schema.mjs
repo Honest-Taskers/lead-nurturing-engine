@@ -41,11 +41,40 @@ const statements = sql
  * `minLength` widens an existing column that is narrower than the target.
  */
 const COLUMNS = [
+  { table: 'lne_leads', name: 'sender_id', type: 'CHAR(36) NULL', after: 'id' },
   { table: 'lne_leads', name: 'logo_url', type: 'VARCHAR(500) NULL', after: 'website' },
+  { table: 'lne_leads', name: 'photo_url', type: 'VARCHAR(500) NULL', after: 'logo_url' },
   { table: 'lne_leads', name: 'contact_path', type: 'VARCHAR(500) NULL', after: 'linkedin_url' },
   { table: 'lne_leads', name: 'emails', type: 'VARCHAR(500) NULL', minLength: 500 },
   { table: 'lne_leads', name: 'linkedin_url', type: 'VARCHAR(500) NULL', minLength: 500 },
   { table: 'lne_leads', name: 'phone', type: 'VARCHAR(120) NULL', minLength: 120 },
+];
+
+// Keep in sync with DEFAULT_SENDER_ID in src/db/tables.ts.
+const DEFAULT_SENDER_ID = '00000000-0000-4000-8000-000000000001';
+
+/**
+ * Data backfills, idempotent via their WHERE clauses. Run after COLUMNS (so
+ * the columns exist) and before INDEXES (so unique keys never see NULLs).
+ */
+const BACKFILLS = [
+  {
+    label: 'lne_leads.sender_id → default sender',
+    sql: `UPDATE lne_leads SET sender_id = '${DEFAULT_SENDER_ID}' WHERE sender_id IS NULL`,
+  },
+];
+
+/**
+ * Index migrations guarded by information_schema (MySQL/TiDB have no
+ * ADD INDEX IF NOT EXISTS). `replaces` names an old index to drop first.
+ */
+const INDEXES = [
+  {
+    table: 'lne_leads',
+    name: 'uq_sender_org_persona',
+    ddl: 'ADD UNIQUE KEY uq_sender_org_persona (sender_id, organization, persona_name)',
+    replaces: 'uq_org_persona',
+  },
 ];
 
 const conn = await mysql.createConnection({ uri: process.env.DATABASE_URL });
@@ -72,6 +101,33 @@ try {
       changes.push(`~${col.table}.${col.name}`);
     }
   }
+  for (const backfill of BACKFILLS) {
+    const [result] = await conn.query(backfill.sql);
+    if (result.affectedRows > 0) changes.push(`${backfill.label} (${result.affectedRows} rows)`);
+  }
+
+  for (const idx of INDEXES) {
+    const [[existing]] = await conn.query(
+      `SELECT 1 AS present FROM information_schema.STATISTICS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ? LIMIT 1`,
+      [idx.table, idx.name],
+    );
+    if (existing) continue;
+    if (idx.replaces) {
+      const [[old]] = await conn.query(
+        `SELECT 1 AS present FROM information_schema.STATISTICS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ? LIMIT 1`,
+        [idx.table, idx.replaces],
+      );
+      if (old) {
+        await conn.query(`ALTER TABLE ${idx.table} DROP INDEX ${idx.replaces}`);
+        changes.push(`-${idx.table}.${idx.replaces}`);
+      }
+    }
+    await conn.query(`ALTER TABLE ${idx.table} ${idx.ddl}`);
+    changes.push(`+${idx.table}.${idx.name}`);
+  }
+
   console.log(changes.length ? `migrations ok — ${changes.join(', ')}` : 'migrations ok — nothing to change');
 } finally {
   await conn.end();

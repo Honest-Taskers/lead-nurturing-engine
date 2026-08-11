@@ -205,6 +205,13 @@ export default function LeadFormPage() {
               placeholder="linkedin.com/company/commonspirit-health/"
             />
             <Field
+              label="Photo URL"
+              hint="(headshot for the personalized report cover — optional)"
+              value={val('photoUrl')}
+              onChange={set('photoUrl')}
+              placeholder="https://example.com/steve-scharmann.jpg"
+            />
+            <Field
               label="Phone"
               value={val('phone')}
               onChange={set('phone')}

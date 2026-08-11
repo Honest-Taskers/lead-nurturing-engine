@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import type { AppSettings, Lead, Report } from '../data/types';
-import { api } from '../api/client';
+import type { AppSettings, Lead, Report, Sender, TeamMember } from '../data/types';
+import { api, setActiveSenderId } from '../api/client';
 
 /**
  * App store backed by the Express + MySQL API (server/).
@@ -28,11 +28,22 @@ interface AppContextValue {
   ) => Promise<Report>;
   markAsSent: (reportId: string) => Promise<void>;
   saveSettings: (s: Partial<AppSettings>) => Promise<void>;
+  // Multi-tenant senders
+  senders: Sender[];
+  activeSenderId: string | null;
+  activeSender: Sender | undefined;
+  switchSender: (id: string) => Promise<void>;
+  createSender: (s: Partial<Sender> & { name: string }) => Promise<Sender>;
+  teamMembers: TeamMember[];
+  addTeamMember: (m: Partial<TeamMember> & { name: string }) => Promise<TeamMember>;
+  updateTeamMember: (memberId: string, m: Partial<TeamMember>) => Promise<void>;
+  removeTeamMember: (memberId: string) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
 
 const AUTH_KEY = 're-authed';
+const SENDER_KEY = 're-active-sender';
 
 const FALLBACK_SETTINGS: AppSettings = {
   companyName: 'Honest Taskers',
@@ -40,13 +51,12 @@ const FALLBACK_SETTINGS: AppSettings = {
   cadenceDays: 14,
   defaultSections: [
     'Industry overview',
-    'Key 2026 trends',
-    'Top publications to follow',
+    'Key trends & data',
     'Hiring / talent insight',
-    'How Honest Taskers helps',
+    'Top publications to follow',
   ],
   aiPrompt: '',
-  aiModel: 'claude-opus-5',
+  aiModel: 'gpt-5.1',
   apiKeyConfigured: false,
 };
 
@@ -64,17 +74,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [reports, setReports] = useState<Report[]>([]);
   const [reportStats, setReportStats] = useState({ total: 0, sentThisMonth: 0 });
   const [settings, setSettings] = useState<AppSettings>(FALLBACK_SETTINGS);
+  const [senders, setSenders] = useState<Sender[]>([]);
+  const [activeSenderId, setActiveSender] = useState<string | null>(() => localStorage.getItem(SENDER_KEY));
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (preferredSenderId?: string | null) => {
     try {
-      const [leadsData, settingsData, stats] = await Promise.all([
+      // Resolve the active sender before any scoped call: a stale stored id
+      // (deleted sender, different environment) falls back to the default.
+      const sendersData = await api.listSenders();
+      setSenders(sendersData);
+      const stored = preferredSenderId ?? localStorage.getItem(SENDER_KEY);
+      const resolved =
+        sendersData.find((x) => x.id === stored) ?? sendersData.find((x) => x.isDefault) ?? sendersData[0];
+      const senderId = resolved?.id ?? null;
+      setActiveSenderId(senderId);
+      setActiveSender(senderId);
+      if (senderId) localStorage.setItem(SENDER_KEY, senderId);
+
+      const [leadsData, settingsData, stats, team] = await Promise.all([
         api.listLeads(),
         api.getSettings(),
         api.reportStats(),
+        senderId ? api.listTeam(senderId) : Promise.resolve([]),
       ]);
       setLeads(leadsData);
       setSettings(settingsData);
       setReportStats(stats);
+      setTeamMembers(team);
+      setReports([]);
       setApiError(null);
     } catch (err) {
       setApiError(err instanceof Error ? err.message : 'Could not reach the API');
@@ -87,6 +115,51 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (authed) void refresh();
     else setReady(true);
   }, [authed, refresh]);
+
+  const switchSender = useCallback(
+    async (id: string) => {
+      localStorage.setItem(SENDER_KEY, id);
+      await refresh(id);
+    },
+    [refresh],
+  );
+
+  const createSender = useCallback(
+    async (s: Partial<Sender> & { name: string }) => {
+      const sender = await api.createSender(s);
+      await switchSender(sender.id);
+      return sender;
+    },
+    [switchSender],
+  );
+
+  const addTeamMember = useCallback(
+    async (m: Partial<TeamMember> & { name: string }) => {
+      if (!activeSenderId) throw new Error('No active sender');
+      const member = await api.addTeamMember(activeSenderId, m);
+      setTeamMembers((t) => [...t, member]);
+      return member;
+    },
+    [activeSenderId],
+  );
+
+  const updateTeamMember = useCallback(
+    async (memberId: string, m: Partial<TeamMember>) => {
+      if (!activeSenderId) throw new Error('No active sender');
+      const member = await api.updateTeamMember(activeSenderId, memberId, m);
+      setTeamMembers((t) => t.map((x) => (x.id === memberId ? member : x)));
+    },
+    [activeSenderId],
+  );
+
+  const removeTeamMember = useCallback(
+    async (memberId: string) => {
+      if (!activeSenderId) throw new Error('No active sender');
+      await api.deleteTeamMember(activeSenderId, memberId);
+      setTeamMembers((t) => t.filter((x) => x.id !== memberId));
+    },
+    [activeSenderId],
+  );
 
   const login = useCallback((_email: string) => {
     localStorage.setItem(AUTH_KEY, '1');
@@ -175,8 +248,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
       generateReport,
       markAsSent,
       saveSettings,
+      senders,
+      activeSenderId,
+      activeSender: senders.find((x) => x.id === activeSenderId),
+      switchSender,
+      createSender,
+      teamMembers,
+      addTeamMember,
+      updateTeamMember,
+      removeTeamMember,
     }),
-    [authed, login, logout, ready, apiError, leads, reports, reportStats, settings, getLead, reportsForLead, loadReportsForLead, saveLead, importLeads, generateReport, markAsSent, saveSettings],
+    [authed, login, logout, ready, apiError, leads, reports, reportStats, settings, getLead, reportsForLead, loadReportsForLead, saveLead, importLeads, generateReport, markAsSent, saveSettings, senders, activeSenderId, switchSender, createSender, teamMembers, addTeamMember, updateTeamMember, removeTeamMember],
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

@@ -1,9 +1,27 @@
 import { randomUUID } from 'node:crypto';
 import type { RowDataPacket, ResultSetHeader } from 'mysql2/promise';
 import { pool } from './pool.js';
-import { LEADS, REPORTS, SETTINGS } from './tables.js';
+import { DEFAULT_SENDER_ID, LEADS, REPORTS, SENDERS, TEAM_MEMBERS } from './tables.js';
 import { logoUrlForWebsite, withLogoToken } from '../services/logo.js';
-import type { AppSettings, Lead, Report, ReportSection } from '../types.js';
+import {
+  BODY_SECTIONS,
+  type AppSettings,
+  type Lead,
+  type Report,
+  type ReportSection,
+  type Sender,
+  type TeamMember,
+} from '../types.js';
+
+/** Legacy defaultSections values → current body-section names (mandatory sections are injected at generate time). */
+function normalizeDefaultSections(stored: string[]): string[] {
+  const renames: Record<string, string> = { 'Key 2026 trends': 'Key trends & data' };
+  const body = stored
+    .map((s) => renames[s] ?? s)
+    .filter((s) => (BODY_SECTIONS as readonly string[]).includes(s));
+  const deduped = [...new Set(body)];
+  return deduped.length ? deduped : [...BODY_SECTIONS];
+}
 
 /**
  * Fills in the logo.dev URL from the website domain unless one was supplied,
@@ -20,10 +38,12 @@ function withDerivedLogo(input: Partial<Lead>): Partial<Lead> {
 function rowToLead(r: RowDataPacket): Lead {
   return {
     id: r.id,
+    senderId: r.sender_id,
     organization: r.organization,
     industry: r.industry,
     website: r.website,
     logoUrl: withLogoToken(r.logo_url),
+    photoUrl: r.photo_url,
     headquarters: r.headquarters,
     orgSize: r.org_size,
     locationsReach: r.locations_reach,
@@ -75,10 +95,12 @@ function rowToReport(r: RowDataPacket): Report {
 /* ---------- leads ---------- */
 
 const LEAD_COLUMNS: Record<string, keyof Lead> = {
+  sender_id: 'senderId',
   organization: 'organization',
   industry: 'industry',
   website: 'website',
   logo_url: 'logoUrl',
+  photo_url: 'photoUrl',
   headquarters: 'headquarters',
   org_size: 'orgSize',
   locations_reach: 'locationsReach',
@@ -95,9 +117,10 @@ const LEAD_COLUMNS: Record<string, keyof Lead> = {
   next_due_date: 'nextDueDate',
 };
 
-export async function listLeads(): Promise<Lead[]> {
+export async function listLeads(senderId: string): Promise<Lead[]> {
   const [rows] = await pool.query<RowDataPacket[]>(
-    `SELECT * FROM ${LEADS} ORDER BY created_at DESC, organization`,
+    `SELECT * FROM ${LEADS} WHERE sender_id = ? ORDER BY created_at DESC, organization`,
+    [senderId],
   );
   return rows.map(rowToLead);
 }
@@ -141,10 +164,11 @@ export async function updateLead(id: string, input: Partial<Lead>): Promise<Lead
   return getLead(id);
 }
 
-/** Import with dedupe on (organization, persona_name). */
+/** Import with dedupe on (sender, organization, persona_name). */
 export async function importLeads(
   rows: Array<Partial<Lead>>,
   defaultRep: string,
+  senderId: string,
 ): Promise<{ imported: number; skipped: number }> {
   let imported = 0;
   let skipped = 0;
@@ -160,6 +184,7 @@ export async function importLeads(
         personaTitle: '',
         assignedRep: defaultRep,
         ...row,
+        senderId,
       });
       imported += 1;
     } catch (err: unknown) {
@@ -224,46 +249,214 @@ export async function markReportSent(id: string, cadenceDays: number): Promise<R
   return getReport(id);
 }
 
-export async function countReports(): Promise<{ total: number; sentThisMonth: number }> {
+export async function countReports(senderId: string): Promise<{ total: number; sentThisMonth: number }> {
   const [rows] = await pool.query<RowDataPacket[]>(
     `SELECT COUNT(*) AS total,
-            SUM(status = 'sent' AND sent_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01')) AS sent_this_month
-     FROM ${REPORTS}`,
+            SUM(r.status = 'sent' AND r.sent_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01')) AS sent_this_month
+     FROM ${REPORTS} r JOIN ${LEADS} l ON l.id = r.lead_id
+     WHERE l.sender_id = ?`,
+    [senderId],
   );
   return { total: Number(rows[0].total), sentThisMonth: Number(rows[0].sent_this_month ?? 0) };
 }
 
-/* ---------- settings ---------- */
+/* ---------- senders ---------- */
 
-export async function getSettings(): Promise<AppSettings> {
-  const [rows] = await pool.query<RowDataPacket[]>(`SELECT * FROM ${SETTINGS} WHERE id = 1`);
-  const r = rows[0];
+function rowToSender(r: RowDataPacket): Sender {
   return {
-    companyName: r.company_name,
+    id: r.id,
+    name: r.name,
+    about: r.about,
+    logoDataUrl: r.logo_data_url,
+    logoUrl: r.logo_url,
+    brandPrimary: r.brand_primary,
+    brandSecondary: r.brand_secondary,
+    fonts: r.fonts,
     defaultRep: r.default_rep,
     cadenceDays: r.cadence_days,
-    defaultSections: parseJson<string[]>(r.default_sections, []),
+    defaultSections: normalizeDefaultSections(parseJson<string[]>(r.default_sections, [])),
     aiPrompt: r.ai_prompt,
     aiModel: r.ai_model,
-    logoDataUrl: r.logo_data_url,
+    isDefault: Boolean(r.is_default),
+  };
+}
+
+export async function listSenders(): Promise<Sender[]> {
+  const [rows] = await pool.query<RowDataPacket[]>(
+    `SELECT * FROM ${SENDERS} ORDER BY is_default DESC, created_at, name`,
+  );
+  return rows.map(rowToSender);
+}
+
+export async function getSender(id: string): Promise<Sender | null> {
+  const [rows] = await pool.query<RowDataPacket[]>(`SELECT * FROM ${SENDERS} WHERE id = ?`, [id]);
+  return rows[0] ? rowToSender(rows[0]) : null;
+}
+
+const SENDER_COLUMNS: Record<string, keyof Sender> = {
+  name: 'name',
+  about: 'about',
+  logo_data_url: 'logoDataUrl',
+  logo_url: 'logoUrl',
+  brand_primary: 'brandPrimary',
+  brand_secondary: 'brandSecondary',
+  fonts: 'fonts',
+  default_rep: 'defaultRep',
+  cadence_days: 'cadenceDays',
+  ai_prompt: 'aiPrompt',
+  ai_model: 'aiModel',
+};
+
+const SENDER_DEFAULT_PROMPT =
+  'Write a concise, executive industry brief for {title} at {company} in {industry}. Cite real trends & publications. Warm, credible, non-salesy.';
+
+export async function createSender(input: Partial<Sender> & { name: string }): Promise<Sender> {
+  const id = input.id ?? randomUUID();
+  await pool.query(
+    `INSERT INTO ${SENDERS} (id, name, about, logo_data_url, logo_url, brand_primary, brand_secondary, fonts,
+                             default_rep, cadence_days, default_sections, ai_prompt, ai_model, is_default)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+    [
+      id,
+      input.name,
+      input.about ?? null,
+      input.logoDataUrl ?? null,
+      input.logoUrl ?? null,
+      input.brandPrimary ?? '#203667',
+      input.brandSecondary ?? '#F7B84A',
+      input.fonts ?? null,
+      input.defaultRep ?? '',
+      input.cadenceDays ?? 14,
+      JSON.stringify(input.defaultSections ?? BODY_SECTIONS),
+      input.aiPrompt ?? SENDER_DEFAULT_PROMPT,
+      input.aiModel ?? 'gpt-5.1',
+    ],
+  );
+  return (await getSender(id))!;
+}
+
+export async function updateSender(id: string, input: Partial<Sender>): Promise<Sender | null> {
+  const sets: string[] = [];
+  const values: unknown[] = [];
+  for (const [col, key] of Object.entries(SENDER_COLUMNS)) {
+    if (key in input) {
+      sets.push(`${col} = ?`);
+      values.push(input[key] ?? null);
+    }
+  }
+  if ('defaultSections' in input) {
+    sets.push('default_sections = ?');
+    values.push(JSON.stringify(input.defaultSections ?? BODY_SECTIONS));
+  }
+  if (sets.length) {
+    values.push(id);
+    await pool.query(`UPDATE ${SENDERS} SET ${sets.join(', ')} WHERE id = ?`, values);
+  }
+  return getSender(id);
+}
+
+/* ---------- team members ---------- */
+
+function rowToTeamMember(r: RowDataPacket): TeamMember {
+  return {
+    id: r.id,
+    senderId: r.sender_id,
+    name: r.name,
+    title: r.title,
+    email: r.email,
+    phone: r.phone,
+    bio: r.bio,
+    sortOrder: r.sort_order,
+  };
+}
+
+export async function listTeamMembers(senderId: string): Promise<TeamMember[]> {
+  const [rows] = await pool.query<RowDataPacket[]>(
+    `SELECT * FROM ${TEAM_MEMBERS} WHERE sender_id = ? ORDER BY sort_order, name`,
+    [senderId],
+  );
+  return rows.map(rowToTeamMember);
+}
+
+export async function addTeamMember(senderId: string, input: Partial<TeamMember> & { name: string }): Promise<TeamMember> {
+  const id = input.id ?? randomUUID();
+  await pool.query(
+    `INSERT INTO ${TEAM_MEMBERS} (id, sender_id, name, title, email, phone, bio, sort_order)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, senderId, input.name, input.title ?? null, input.email ?? null, input.phone ?? null, input.bio ?? null, input.sortOrder ?? 0],
+  );
+  const [rows] = await pool.query<RowDataPacket[]>(`SELECT * FROM ${TEAM_MEMBERS} WHERE id = ?`, [id]);
+  return rowToTeamMember(rows[0]);
+}
+
+export async function updateTeamMember(senderId: string, memberId: string, input: Partial<TeamMember>): Promise<TeamMember | null> {
+  const cols: Record<string, keyof TeamMember> = { name: 'name', title: 'title', email: 'email', phone: 'phone', bio: 'bio', sort_order: 'sortOrder' };
+  const sets: string[] = [];
+  const values: unknown[] = [];
+  for (const [col, key] of Object.entries(cols)) {
+    if (key in input) {
+      sets.push(`${col} = ?`);
+      values.push(input[key] ?? null);
+    }
+  }
+  if (sets.length) {
+    values.push(memberId, senderId);
+    await pool.query(`UPDATE ${TEAM_MEMBERS} SET ${sets.join(', ')} WHERE id = ? AND sender_id = ?`, values);
+  }
+  const [rows] = await pool.query<RowDataPacket[]>(
+    `SELECT * FROM ${TEAM_MEMBERS} WHERE id = ? AND sender_id = ?`,
+    [memberId, senderId],
+  );
+  return rows[0] ? rowToTeamMember(rows[0]) : null;
+}
+
+export async function deleteTeamMember(senderId: string, memberId: string): Promise<boolean> {
+  const [result] = await pool.query<ResultSetHeader>(
+    `DELETE FROM ${TEAM_MEMBERS} WHERE id = ? AND sender_id = ?`,
+    [memberId, senderId],
+  );
+  return result.affectedRows > 0;
+}
+
+/* ---------- settings (sender-scoped shim) ---------- */
+
+/**
+ * The legacy /api/settings contract, served from the resolved sender's row
+ * (lne_settings is no longer read). companyName ↔ sender.name and
+ * logoDataUrl ↔ sender.logo_data_url; brand fields ride along for the PDF.
+ */
+export async function getSettings(senderId: string = DEFAULT_SENDER_ID): Promise<AppSettings> {
+  const sender = (await getSender(senderId)) ?? (await getSender(DEFAULT_SENDER_ID));
+  if (!sender) throw new Error('No sender configured — run npm run db:schema to bootstrap');
+  return {
+    companyName: sender.name,
+    defaultRep: sender.defaultRep,
+    cadenceDays: sender.cadenceDays,
+    defaultSections: sender.defaultSections,
+    aiPrompt: sender.aiPrompt,
+    aiModel: sender.aiModel,
+    logoDataUrl: sender.logoDataUrl,
+    about: sender.about,
+    brandPrimary: sender.brandPrimary,
+    brandSecondary: sender.brandSecondary,
+    fonts: sender.fonts,
     apiKeyConfigured: Boolean(process.env.OPENAI_API_KEY),
   };
 }
 
-export async function updateSettings(s: Partial<AppSettings>): Promise<AppSettings> {
-  const map: Array<[string, unknown]> = [];
-  if (s.companyName !== undefined) map.push(['company_name', s.companyName]);
-  if (s.defaultRep !== undefined) map.push(['default_rep', s.defaultRep]);
-  if (s.cadenceDays !== undefined) map.push(['cadence_days', s.cadenceDays]);
-  if (s.defaultSections !== undefined) map.push(['default_sections', JSON.stringify(s.defaultSections)]);
-  if (s.aiPrompt !== undefined) map.push(['ai_prompt', s.aiPrompt]);
-  if (s.aiModel !== undefined) map.push(['ai_model', s.aiModel]);
-  if (s.logoDataUrl !== undefined) map.push(['logo_data_url', s.logoDataUrl]);
-  if (map.length) {
-    await pool.query(
-      `UPDATE ${SETTINGS} SET ${map.map(([c]) => `${c} = ?`).join(', ')} WHERE id = 1`,
-      map.map(([, v]) => v),
-    );
-  }
-  return getSettings();
+export async function updateSettings(s: Partial<AppSettings>, senderId: string = DEFAULT_SENDER_ID): Promise<AppSettings> {
+  await updateSender(senderId, {
+    ...(s.companyName !== undefined ? { name: s.companyName } : {}),
+    ...(s.defaultRep !== undefined ? { defaultRep: s.defaultRep } : {}),
+    ...(s.cadenceDays !== undefined ? { cadenceDays: s.cadenceDays } : {}),
+    ...(s.defaultSections !== undefined ? { defaultSections: s.defaultSections } : {}),
+    ...(s.aiPrompt !== undefined ? { aiPrompt: s.aiPrompt } : {}),
+    ...(s.aiModel !== undefined ? { aiModel: s.aiModel } : {}),
+    ...(s.logoDataUrl !== undefined ? { logoDataUrl: s.logoDataUrl } : {}),
+    ...(s.about !== undefined ? { about: s.about } : {}),
+    ...(s.brandPrimary != null ? { brandPrimary: s.brandPrimary } : {}),
+    ...(s.brandSecondary != null ? { brandSecondary: s.brandSecondary } : {}),
+    ...(s.fonts !== undefined ? { fonts: s.fonts } : {}),
+  });
+  return getSettings(senderId);
 }

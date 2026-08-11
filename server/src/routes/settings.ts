@@ -12,16 +12,21 @@ const settingsSchema = z.object({
   aiPrompt: z.string().optional(),
   aiModel: z.string().optional(),
   logoDataUrl: z.string().nullish(),
+  about: z.string().nullish(),
+  brandPrimary: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+  brandSecondary: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+  fonts: z.string().nullish(),
 });
 
-router.get('/', async (_req, res) => {
-  res.json(await repo.getSettings());
+// Settings are a sender-scoped view: reads and writes go to the active sender.
+router.get('/', async (req, res) => {
+  res.json(await repo.getSettings(req.senderId));
 });
 
 router.put('/', async (req, res) => {
   const parsed = settingsSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Invalid settings payload' });
-  res.json(await repo.updateSettings(parsed.data));
+  res.json(await repo.updateSettings(parsed.data, req.senderId));
 });
 
 export default router;

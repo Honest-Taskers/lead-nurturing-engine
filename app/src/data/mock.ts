@@ -4,7 +4,7 @@
  * run `npm run seed` in server/ (canonical restore path, same data as below).
  */
 import type { AppSettings, Lead, Report } from './types';
-import { REPORT_SECTIONS, addDays, todayIso } from './types';
+import { BODY_SECTIONS, REPORT_SECTIONS, addDays, todayIso } from './types';
 
 /** Dates are seeded relative to "today" so the demo always shows live cadence states. */
 const today = todayIso();
@@ -129,9 +129,10 @@ export const defaultSettings: AppSettings = {
   companyName: 'Honest Taskers',
   defaultRep: 'Jaya',
   cadenceDays: 14,
-  defaultSections: [...REPORT_SECTIONS],
+  // Body sections only — the mandatory structure is injected server-side.
+  defaultSections: [...BODY_SECTIONS],
   aiPrompt:
     'Write a concise, executive industry brief for {title} at {company} in {industry}. Cite real trends & publications. Warm, credible, non-salesy.',
-  aiModel: 'claude-opus-5',
+  aiModel: 'gpt-5.1',
   apiKeyConfigured: false,
 };

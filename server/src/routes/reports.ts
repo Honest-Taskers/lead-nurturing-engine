@@ -3,6 +3,7 @@ import { z } from 'zod';
 import * as repo from '../db/repo.js';
 import { generateReport } from '../services/reportGenerator.js';
 import { renderReportPdf } from '../services/reportPdf.js';
+import { normalizeRequestedSections } from '../types.js';
 
 const router = Router();
 
@@ -18,18 +19,24 @@ router.post('/generate', async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: 'leadId, focus, template, and sections are required' });
 
   const lead = await repo.getLead(parsed.data.leadId);
-  if (!lead) return res.status(404).json({ error: 'Lead not found' });
-  const settings = await repo.getSettings();
+  if (!lead || lead.senderId !== req.senderId) return res.status(404).json({ error: 'Lead not found' });
+  // Brand + report prefs come from the lead's owning sender.
+  const settings = await repo.getSettings(lead.senderId ?? undefined);
 
   try {
     const generated = await generateReport({
       lead,
       focus: parsed.data.focus,
       template: parsed.data.template,
-      sections: parsed.data.sections,
+      // Mandatory sections (exec summary, takeaways, closing) wrap whatever
+      // body sections the client requested; legacy names are normalized.
+      sections: normalizeRequestedSections(parsed.data.sections),
       aiPrompt: settings.aiPrompt,
       aiModel: settings.aiModel,
       companyName: settings.companyName,
+      about: settings.about,
+      brandPrimary: settings.brandPrimary,
+      brandSecondary: settings.brandSecondary,
     });
 
     const pad = (n: number) => String(n).padStart(2, '0');
@@ -59,8 +66,8 @@ router.post('/generate', async (req, res) => {
   }
 });
 
-router.get('/stats', async (_req, res) => {
-  res.json(await repo.countReports());
+router.get('/stats', async (req, res) => {
+  res.json(await repo.countReports(req.senderId));
 });
 
 router.get('/:id', async (req, res) => {
@@ -75,7 +82,7 @@ router.get('/:id/pdf', async (req, res) => {
   if (!report) return res.status(404).json({ error: 'Report not found' });
   const lead = await repo.getLead(report.leadId);
   if (!lead) return res.status(404).json({ error: 'Lead not found' });
-  const settings = await repo.getSettings();
+  const settings = await repo.getSettings(lead.senderId ?? undefined);
   try {
     const stream = await renderReportPdf(report, lead, settings);
     const safeName = report.title.replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '-') || 'report';
@@ -94,7 +101,10 @@ router.get('/:id/pdf', async (req, res) => {
 });
 
 router.post('/:id/mark-sent', async (req, res) => {
-  const settings = await repo.getSettings();
+  const existing = await repo.getReport(req.params.id);
+  if (!existing) return res.status(404).json({ error: 'Report not found' });
+  const lead = await repo.getLead(existing.leadId);
+  const settings = await repo.getSettings(lead?.senderId ?? undefined);
   const report = await repo.markReportSent(req.params.id, settings.cadenceDays);
   if (!report) return res.status(404).json({ error: 'Report not found' });
   res.json(report);

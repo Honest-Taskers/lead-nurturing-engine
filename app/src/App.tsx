@@ -7,6 +7,7 @@ import LeadFormPage from './pages/LeadFormPage';
 import LeadDetailPage from './pages/LeadDetailPage';
 import ReportPreviewPage from './pages/ReportPreviewPage';
 import ImportPage from './pages/ImportPage';
+import OnboardingPage from './pages/OnboardingPage';
 import SettingsPage from './pages/SettingsPage';
 
 export default function App() {
@@ -22,6 +23,7 @@ export default function App() {
           <Route path="/leads/:id/edit" element={<LeadFormPage />} />
           <Route path="/leads/:leadId/report/:reportId" element={<ReportPreviewPage />} />
           <Route path="/import" element={<ImportPage />} />
+          <Route path="/onboarding" element={<OnboardingPage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Route>
       </Routes>
