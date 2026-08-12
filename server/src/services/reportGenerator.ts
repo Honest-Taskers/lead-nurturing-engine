@@ -636,23 +636,36 @@ export async function generateReport(input: GenerateInput, options: GenerateOpti
   let parsed = await runWriterAgent(client, model, writerPrompt, signal, onProgress, writerDeadline);
   console.log(`draft report ready (${Math.round((Date.now() - startedAt) / 1000)}s)`);
 
-  // 3. Deterministic structural validation + 4. small-model goal check.
-  onProgress?.('goal-check', 'Auditing the draft against the quality rubric');
+  // 3–5. Validate → goal-check → repair, looping (max 2 repair rounds) until
+  // the report comes back clean or the serverless budget runs low. Soft
+  // violations join the repair list labeled "(style)" so title length, quote
+  // count etc. get fixed instead of shipping. After a repair the draft is
+  // re-audited so a clean result is verified clean, not assumed.
   let { hard, soft } = validateReport(parsed, input.sections);
-  const goalIssues = Date.now() < deadlineAt - 75_000 ? await runGoalCheck(client, parsed, signal) : [];
-  if (goalIssues.length) console.warn('goal check issues:', goalIssues);
+  for (let round = 0; round < 2; round++) {
+    onProgress?.(
+      'goal-check',
+      round === 0 ? 'Auditing the draft against the quality rubric' : 'Re-auditing the repaired draft',
+    );
+    // The re-audit only runs when there's still room for the second repair it
+    // might trigger; otherwise this round works from deterministic checks only.
+    const auditReserve = round === 0 ? 75_000 : 130_000;
+    const goalIssues = Date.now() < deadlineAt - auditReserve ? await runGoalCheck(client, parsed, signal) : [];
+    if (goalIssues.length) console.warn(`goal check issues (round ${round + 1}):`, goalIssues);
 
-  // 5. One repair pass (no research — the content exists, only shape/rubric is off).
-  // Skipped when the serverless budget is running low; a slightly-off report
-  // beats a timeout.
-  const violations = [...hard, ...goalIssues];
-  if (violations.length && Date.now() < deadlineAt - 55_000) {
-    console.warn('report failed validation, attempting repair:', violations);
+    const violations = [...hard, ...goalIssues, ...soft.map((s) => `(style) ${s}`)];
+    if (!violations.length) break;
+    if (Date.now() >= deadlineAt - 55_000) {
+      console.warn('repair skipped (budget exhausted), shipping with issues:', violations);
+      break;
+    }
+    console.warn(`repair round ${round + 1} fixing:`, violations);
     onProgress?.('repair', `Fixing ${violations.length} issue${violations.length === 1 ? '' : 's'} found in review`);
     try {
       const repairPrompt = [
         'The report JSON below violates the output contract. Return a corrected version of the SAME report:',
         'fix ONLY the listed violations, changing nothing else. Do not re-research or rewrite unrelated content.',
+        'Items marked "(style)" are polish requests — apply them without restructuring the report.',
         '',
         `Violations:\n- ${violations.join('\n- ')}`,
         '',
@@ -665,13 +678,13 @@ export async function generateReport(input: GenerateInput, options: GenerateOpti
       ].join('\n');
       const repaired = await runWriterAgent(client, model, repairPrompt, signal, undefined, writerDeadline);
       const recheck = validateReport(repaired, input.sections);
-      if (recheck.hard.length <= hard.length) {
-        parsed = repaired;
-        ({ hard, soft } = recheck);
-      }
+      if (recheck.hard.length > hard.length) break; // repair made it worse — keep the original
+      parsed = repaired;
+      ({ hard, soft } = recheck);
     } catch (err) {
       if (signal?.aborted) throw err;
       console.warn('repair pass failed (continuing with original):', err);
+      break;
     }
   }
   if (hard.length) console.warn('report shipped with unresolved violations:', hard);
