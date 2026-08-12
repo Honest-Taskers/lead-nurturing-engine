@@ -188,7 +188,7 @@ export default function OnboardingPage() {
                   <Field label="Email" value={m.email} onChange={(v) => setMember(i, { email: v })} placeholder="diana@company.com" />
                   <Field label="Phone" value={m.phone} onChange={(v) => setMember(i, { phone: v })} placeholder="(214) 555-0100" />
                 </Box>
-                <Field label="Short bio" value={m.bio} onChange={(v) => setMember(i, { bio: v })} placeholder="10 years in healthcare operations…" />
+                <Field label="Short bio" value={m.bio} onChange={(v) => setMember(i, { bio: v })} placeholder="15 years advising founders and family offices…" />
               </Box>
             ))}
             <Button size="small" startIcon={<AddIcon />} onClick={() => setMembers((ms) => [...ms, emptyMember()])} sx={{ alignSelf: 'flex-start' }}>

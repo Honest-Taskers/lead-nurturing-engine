@@ -68,17 +68,31 @@ describe('normalizeRequestedSections', () => {
     ]);
   });
 
-  it('renames legacy keys, drops unknowns and mandatory duplicates, dedupes', () => {
+  it('renames legacy keys, keeps custom sections, drops mandatory duplicates, dedupes', () => {
     expect(
       normalizeRequestedSections([
         'Key 2026 trends',
         'How Honest Taskers helps',
         'Executive summary',
-        'Made up section',
+        'Retirement income readiness',
         'Industry overview',
         'Industry overview',
       ]),
-    ).toEqual(['Executive summary', 'Key trends & data', 'Industry overview', 'Actionable takeaways', 'Closing note']);
+    ).toEqual([
+      'Executive summary',
+      'Key trends & data',
+      'Retirement income readiness',
+      'Industry overview',
+      'Actionable takeaways',
+      'Closing note',
+    ]);
+  });
+
+  it('trims, drops empties, and caps custom body sections at 6', () => {
+    const many = ['  Tax exposure  ', '', '   ', ...Array.from({ length: 10 }, (_, i) => `Custom section ${i + 1}`)];
+    const result = normalizeRequestedSections(many);
+    expect(result[1]).toBe('Tax exposure');
+    expect(result).toHaveLength(3 + 6); // mandatory 3 + capped 6 body sections
   });
 });
 

@@ -5,6 +5,9 @@ import { DEFAULT_SENDER_ID, LEADS, REPORTS, SENDERS, TEAM_MEMBERS } from './tabl
 import { logoUrlForWebsite, withLogoToken } from '../services/logo.js';
 import {
   BODY_SECTIONS,
+  MANDATORY_SECTIONS,
+  MAX_BODY_SECTIONS,
+  MAX_SECTION_NAME_LENGTH,
   type AppSettings,
   type Lead,
   type Report,
@@ -13,13 +16,20 @@ import {
   type TeamMember,
 } from '../types.js';
 
-/** Legacy defaultSections values → current body-section names (mandatory sections are injected at generate time). */
+/**
+ * defaultSections cleanup: legacy names normalized, custom sender-defined
+ * names kept (mandatory sections are injected at generate time). Falls back
+ * to the suggested body set only when nothing usable was stored.
+ */
 function normalizeDefaultSections(stored: string[]): string[] {
-  const renames: Record<string, string> = { 'Key 2026 trends': 'Key trends & data' };
+  const renames: Record<string, string> = {
+    'Key 2026 trends': 'Key trends & data',
+    'How Honest Taskers helps': '',
+  };
   const body = stored
-    .map((s) => renames[s] ?? s)
-    .filter((s) => (BODY_SECTIONS as readonly string[]).includes(s));
-  const deduped = [...new Set(body)];
+    .map((s) => (renames[s] ?? s).trim().slice(0, MAX_SECTION_NAME_LENGTH).trim())
+    .filter((s) => s && !(MANDATORY_SECTIONS as readonly string[]).includes(s));
+  const deduped = [...new Set(body)].slice(0, MAX_BODY_SECTIONS);
   return deduped.length ? deduped : [...BODY_SECTIONS];
 }
 
@@ -333,7 +343,7 @@ export async function createSender(input: Partial<Sender> & { name: string }): P
       input.cadenceDays ?? 14,
       JSON.stringify(input.defaultSections ?? BODY_SECTIONS),
       input.aiPrompt ?? SENDER_DEFAULT_PROMPT,
-      input.aiModel ?? 'gpt-5.1',
+      input.aiModel ?? 'claude-sonnet-5',
     ],
   );
   return (await getSender(id))!;

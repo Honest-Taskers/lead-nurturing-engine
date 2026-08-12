@@ -155,15 +155,96 @@ async function main() {
       [m.id, DEFAULT_SENDER_ID, m.name, m.title, m.sort],
     );
   }
+  // Financial-advisory rehearsal tenant (Wednesday tester demo): custom
+  // sections named for an advisory practice, prospect leads below.
+  const sterlingSections = [
+    'Where the wealth landscape is moving',
+    'Tax & entity considerations',
+    'Succession & exit readiness',
+  ];
   await pool.query(
     `INSERT IGNORE INTO ${SENDERS} (id, name, about, brand_primary, brand_secondary, default_rep, cadence_days, default_sections, ai_prompt, ai_model, is_default)
-     VALUES (?, 'Sterling Financial Partners', 'Independent wealth advisory serving founders and family offices.', '#0F3D2E', '#C9A227', 'Morgan', 14, ?, ?, 'gpt-5.1', 0)`,
+     VALUES (?, 'Sterling Financial Partners', 'Independent wealth advisory serving founders and family offices.', '#0F3D2E', '#C9A227', 'Morgan', 14, ?, ?, 'claude-sonnet-5', 0)`,
     [
       DEMO_SENDER_ID,
-      JSON.stringify(['Industry overview', 'Key trends & data']),
-      'Write a concise, executive industry brief for {title} at {company} in {industry}. Cite real trends & publications. Warm, credible, non-salesy.',
+      JSON.stringify(sterlingSections),
+      'Write a concise, executive briefing for {title} at {company} in {industry}. Cite real trends & publications. Warm, credible, non-salesy.',
     ],
   );
+  // Upgrade an already-seeded Sterling row in place (INSERT IGNORE skips it).
+  await pool.query(
+    `UPDATE ${SENDERS} SET ai_model = 'claude-sonnet-5', default_sections = ? WHERE id = ? AND ai_model = 'gpt-5.1'`,
+    [JSON.stringify(sterlingSections), DEMO_SENDER_ID],
+  );
+  await pool.query(
+    `INSERT IGNORE INTO ${TEAM_MEMBERS} (id, sender_id, name, title, sort_order) VALUES (?, ?, 'Morgan Sterling', 'Managing Partner, CFP', 0)`,
+    ['00000000-0000-4000-8000-000000002001', DEMO_SENDER_ID],
+  );
+
+  // Financial-advisory prospect leads for rehearsal — public companies/orgs
+  // so the research agent has real material to work with.
+  const sterlingLeads = [
+    {
+      organization: "Portillo's",
+      industry: 'Restaurant group',
+      website: 'portillos.com',
+      hq: 'Chicago, IL',
+      size: 'Mid-cap; ~10,000 employees',
+      reach: '90+ locations across 10 states',
+      signal: 'Founder-era brand navigating post-IPO ownership transitions',
+      personaName: 'Michael Osanloo',
+      personaTitle: 'Chief Executive Officer',
+    },
+    {
+      organization: 'Duckhorn Portfolio',
+      industry: 'Wine & beverage',
+      website: 'duckhorn.com',
+      hq: 'St. Helena, CA',
+      size: 'Mid-market; ~500 employees',
+      reach: '11 wineries across California and Washington',
+      signal: 'Recently taken private — ownership and equity structures in motion',
+      personaName: 'Robert Hanson',
+      personaTitle: 'President & Chief Executive Officer',
+    },
+    {
+      organization: 'Graham Holdings',
+      industry: 'Diversified holding company',
+      website: 'ghco.com',
+      hq: 'Arlington, VA',
+      size: 'Enterprise; 20,000+ employees',
+      reach: 'Education, media, healthcare and manufacturing units',
+      signal: 'Active acquirer of founder-led businesses; succession planning relevance',
+      personaName: "Timothy O'Shaughnessy",
+      personaTitle: 'Chief Executive Officer',
+    },
+  ];
+  for (const l of sterlingLeads) {
+    const [dupes] = await pool.query<import('mysql2/promise').RowDataPacket[]>(
+      `SELECT id FROM ${LEADS} WHERE organization = ? AND persona_name = ?`,
+      [l.organization, l.personaName],
+    );
+    if (dupes.length) continue;
+    await pool.query(
+      `INSERT INTO ${LEADS} (id, sender_id, organization, industry, website, logo_url, headquarters, org_size, locations_reach,
+                          hiring_signal, persona_name, persona_title, assigned_rep)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Morgan')
+       ON DUPLICATE KEY UPDATE organization = organization`,
+      [
+        randomUUID(),
+        DEMO_SENDER_ID,
+        l.organization,
+        l.industry,
+        l.website,
+        logoUrlForWebsite(l.website),
+        l.hq,
+        l.size,
+        l.reach,
+        l.signal,
+        l.personaName,
+        l.personaTitle,
+      ],
+    );
+  }
   console.log('senders + team ok');
 
   // 2. Leads + historical reports

@@ -391,7 +391,7 @@ export default function ReportDocument({ lead, report }: { lead: Lead; report: R
       {/* Footer band */}
       <Box sx={{ bgcolor: brand.blue, color: '#fff', px: 3, py: 1.5, display: 'flex', alignItems: 'center' }}>
         <Typography sx={{ fontSize: '0.78rem', fontStyle: 'italic', opacity: 0.9 }}>
-          www.honesttaskers.com
+          Prepared by {settings.companyName}
         </Typography>
         <Box sx={{ flex: 1 }} />
         <Typography sx={{ fontWeight: 800, fontSize: '0.9rem', letterSpacing: '0.02em' }}>

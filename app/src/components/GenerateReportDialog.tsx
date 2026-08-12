@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import Autocomplete from '@mui/material/Autocomplete';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Checkbox from '@mui/material/Checkbox';
@@ -17,26 +18,33 @@ import { keyframes } from '@mui/material/styles';
 import { useNavigate } from 'react-router-dom';
 import type { Lead } from '../data/types';
 import type { GenerationPhase, GenerationProgress } from '../api/client';
-import { BODY_SECTIONS, MANDATORY_SECTIONS, REPORT_TEMPLATES } from '../data/types';
+import { MANDATORY_SECTIONS, REPORT_TEMPLATES } from '../data/types';
 import { brand } from '../theme';
 import { useApp } from '../context/AppContext';
 
-/** Report focus is auto-derived from the persona title, overridable in the dialog. */
-export function focusFromTitle(title: string): string {
-  const t = title.toLowerCase();
+/**
+ * Report focus is auto-derived from the persona title when a known specialty
+ * matches; otherwise it falls back to the lead's industry/vertical so any
+ * sender's leads get a sensible default. Free-text overridable in the dialog.
+ */
+export function defaultFocus(lead: Lead): string {
+  const t = lead.personaTitle.toLowerCase();
   if (t.includes('patient access')) return 'Patient access';
-  if (t.includes('finance') || t.includes('cfo')) return 'Healthcare finance';
+  if (t.includes('revenue cycle') || t.includes('rcm')) return 'Revenue cycle management';
   if (t.includes('claims')) return 'Claims operations';
-  return 'Revenue cycle management';
+  return lead.industry || 'Industry outlook';
 }
 
-const FOCUS_OPTIONS = [
+const FOCUS_SUGGESTIONS = [
   'Revenue cycle management',
   'Patient access',
   'Healthcare finance',
   'Claims operations',
   'Practice operations',
 ];
+
+/** Max custom body sections per report — mirrors the server cap. */
+const MAX_BODY_SECTIONS = 6;
 
 /** Pipeline steps in display order; `repair` appears only when it happens. */
 const STEPS: Array<{ phase: GenerationPhase; label: string; hint: string; optional?: boolean }> = [
@@ -97,6 +105,8 @@ export default function GenerateReportDialog({ lead, open, onClose }: Props) {
   const [focus, setFocus] = useState('');
   const [template, setTemplate] = useState<string>(REPORT_TEMPLATES[0]);
   const [sections, setSections] = useState<string[]>([...settings.defaultSections]);
+  const [sectionOptions, setSectionOptions] = useState<string[]>([...settings.defaultSections]);
+  const [newSection, setNewSection] = useState('');
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState('');
   const [progress, setProgress] = useState<GenerationProgress | null>(null);
@@ -104,13 +114,19 @@ export default function GenerateReportDialog({ lead, open, onClose }: Props) {
   const [elapsed, setElapsed] = useState(0);
   const abortRef = useRef<AbortController | null>(null);
 
-  const autoFocus = useMemo(() => (lead ? focusFromTitle(lead.personaTitle) : FOCUS_OPTIONS[0]), [lead]);
+  const autoFocus = useMemo(() => (lead ? defaultFocus(lead) : ''), [lead]);
+  const focusOptions = useMemo(() => {
+    const opts = lead ? [defaultFocus(lead), lead.industry, ...FOCUS_SUGGESTIONS] : FOCUS_SUGGESTIONS;
+    return [...new Set(opts.filter(Boolean))];
+  }, [lead]);
 
   useEffect(() => {
     if (open && lead) {
-      setFocus(focusFromTitle(lead.personaTitle));
+      setFocus(defaultFocus(lead));
       setTemplate(REPORT_TEMPLATES[0]);
       setSections([...settings.defaultSections]);
+      setSectionOptions([...settings.defaultSections]);
+      setNewSection('');
       setGenerating(false);
       setError('');
       setProgress(null);
@@ -134,6 +150,14 @@ export default function GenerateReportDialog({ lead, open, onClose }: Props) {
 
   const toggleSection = (s: string) =>
     setSections((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]));
+
+  const addSection = () => {
+    const name = newSection.trim();
+    if (!name || sections.length >= MAX_BODY_SECTIONS) return;
+    setSectionOptions((prev) => (prev.includes(name) ? prev : [...prev, name]));
+    setSections((prev) => (prev.includes(name) ? prev : [...prev, name]));
+    setNewSection('');
+  };
 
   const handleGenerate = async () => {
     setGenerating(true);
@@ -254,21 +278,22 @@ export default function GenerateReportDialog({ lead, open, onClose }: Props) {
             <Typography variant="body2" sx={{ color: brand.muted, mb: 0.75 }}>
               Report focus
             </Typography>
-            <TextField
-              select
-              fullWidth
-              size="small"
+            <Autocomplete
+              freeSolo
+              options={focusOptions}
               value={focus}
-              onChange={(e) => setFocus(e.target.value)}
+              onInputChange={(_, value) => setFocus(value)}
               sx={{ mb: 2.5 }}
-            >
-              {FOCUS_OPTIONS.map((f) => (
-                <MenuItem key={f} value={f}>
-                  {f}
-                  {f === autoFocus ? ' (auto from title)' : ''}
-                </MenuItem>
-              ))}
-            </TextField>
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  size="small"
+                  fullWidth
+                  placeholder="e.g. Succession & exit readiness"
+                  helperText={focus === autoFocus ? 'Auto-suggested from this lead — type to change' : undefined}
+                />
+              )}
+            />
 
             <Typography variant="body2" sx={{ color: brand.muted, mb: 0.75 }}>
               Template / tone
@@ -315,7 +340,7 @@ export default function GenerateReportDialog({ lead, open, onClose }: Props) {
                   }
                 />
               ))}
-              {BODY_SECTIONS.map((s) => (
+              {sectionOptions.map((s) => (
                 <FormControlLabel
                   key={s}
                   control={
@@ -323,11 +348,37 @@ export default function GenerateReportDialog({ lead, open, onClose }: Props) {
                       size="small"
                       checked={sections.includes(s)}
                       onChange={() => toggleSection(s)}
+                      disabled={!sections.includes(s) && sections.length >= MAX_BODY_SECTIONS}
                     />
                   }
                   label={<Typography variant="body2">{s}</Typography>}
                 />
               ))}
+              {/* One-off custom section for this report */}
+              <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', width: '100%', py: 0.75 }}>
+                <TextField
+                  size="small"
+                  fullWidth
+                  placeholder="Add a section, e.g. Tax & entity considerations"
+                  value={newSection}
+                  onChange={(e) => setNewSection(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      addSection();
+                    }
+                  }}
+                  slotProps={{ htmlInput: { maxLength: 60 } }}
+                />
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={addSection}
+                  disabled={!newSection.trim() || sections.length >= MAX_BODY_SECTIONS}
+                >
+                  Add
+                </Button>
+              </Box>
             </Box>
 
             {error && (

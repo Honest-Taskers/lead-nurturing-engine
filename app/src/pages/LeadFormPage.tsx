@@ -107,7 +107,7 @@ export default function LeadFormPage() {
               required
               value={val('organization')}
               onChange={set('organization')}
-              placeholder="CommonSpirit Health"
+              placeholder="Meridian Manufacturing Group"
             />
             <Box sx={{ display: 'flex', gap: 2 }}>
               <Field
@@ -115,13 +115,13 @@ export default function LeadFormPage() {
                 required
                 value={val('industry')}
                 onChange={set('industry')}
-                placeholder="Hospital System"
+                placeholder="Precision manufacturing"
               />
               <Field
                 label="Website"
                 value={val('website')}
                 onChange={set('website')}
-                placeholder="commonspirit.org"
+                placeholder="meridianmfg.com"
               />
             </Box>
             <Box sx={{ display: 'flex', gap: 2 }}>
@@ -135,27 +135,28 @@ export default function LeadFormPage() {
                 label="Org size"
                 value={val('orgSize')}
                 onChange={set('orgSize')}
-                placeholder="Enterprise; 150,000+"
+                placeholder="Mid-market; 400 employees"
               />
             </Box>
             <Field
               label="Locations / reach"
               value={val('locationsReach')}
               onChange={set('locationsReach')}
-              placeholder="140+ hospitals; 700+ care sites"
+              placeholder="3 plants across the Midwest"
             />
             <Field
-              label="Open positions / hiring signal"
+              label="Growth / buying signal"
+              hint="(hiring, expansion, exit prep, funding — anything that makes them reachable now)"
               value={val('hiringSignal')}
               onChange={set('hiringSignal')}
-              placeholder="Ongoing enterprise healthcare hiring"
+              placeholder="Hiring operations leadership; opened two new sites"
             />
             <Field
               label="Logo URL"
               hint="(auto-filled from the website via logo.dev)"
               value={val('logoUrl')}
               onChange={set('logoUrl')}
-              placeholder="https://img.logo.dev/commonspirit.org"
+              placeholder="https://img.logo.dev/meridianmfg.com"
             />
           </Box>
         </Card>
@@ -175,41 +176,41 @@ export default function LeadFormPage() {
                 required
                 value={val('personaName')}
                 onChange={set('personaName')}
-                placeholder="Steve Scharmann"
+                placeholder="Dana Whitfield"
               />
               <Field
                 label="Title"
                 required
                 value={val('personaTitle')}
                 onChange={set('personaTitle')}
-                placeholder="VP of Revenue Cycle"
+                placeholder="Founder & CEO"
               />
             </Box>
             <Field
               label="Email(s)"
               value={val('emails')}
               onChange={set('emails')}
-              placeholder="steve.scharmann@commonspirit.org"
+              placeholder="dana@meridianmfg.com"
             />
             <Field
               label="LinkedIn URL"
               value={val('linkedinUrl')}
               onChange={set('linkedinUrl')}
-              placeholder="linkedin.com/in/steve-scharmann"
+              placeholder="linkedin.com/in/dana-whitfield"
             />
             <Field
               label="LinkedIn / contact path"
               hint="(profile or company page to reach them through)"
               value={val('contactPath')}
               onChange={set('contactPath')}
-              placeholder="linkedin.com/company/commonspirit-health/"
+              placeholder="linkedin.com/company/meridian-mfg/"
             />
             <Field
               label="Photo URL"
               hint="(headshot for the personalized report cover — optional)"
               value={val('photoUrl')}
               onChange={set('photoUrl')}
-              placeholder="https://example.com/steve-scharmann.jpg"
+              placeholder="https://example.com/dana-whitfield.jpg"
             />
             <Field
               label="Phone"

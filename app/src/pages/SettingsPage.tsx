@@ -2,15 +2,16 @@ import { useEffect, useRef, useState } from 'react';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Card from '@mui/material/Card';
-import Checkbox from '@mui/material/Checkbox';
 import Chip from '@mui/material/Chip';
-import FormControlLabel from '@mui/material/FormControlLabel';
 import MenuItem from '@mui/material/MenuItem';
 import Snackbar from '@mui/material/Snackbar';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import PageHeader from '../components/PageHeader';
 import { BODY_SECTIONS, MANDATORY_SECTIONS } from '../data/types';
+
+/** Max custom body sections per report — mirrors the server cap. */
+const MAX_BODY_SECTIONS = 6;
 import { brand } from '../theme';
 import { useApp } from '../context/AppContext';
 
@@ -41,17 +42,25 @@ export default function SettingsPage() {
   const logoInputRef = useRef<HTMLInputElement>(null);
 
   // Settings load async after mount — sync the form when they arrive.
+  const [newSection, setNewSection] = useState('');
+
   useEffect(() => {
     setForm({ ...settings });
   }, [settings]);
 
-  const toggleSection = (s: string) =>
-    setForm((f) => ({
-      ...f,
-      defaultSections: f.defaultSections.includes(s)
-        ? f.defaultSections.filter((x) => x !== s)
-        : [...f.defaultSections, s],
-    }));
+  const removeSection = (s: string) =>
+    setForm((f) => ({ ...f, defaultSections: f.defaultSections.filter((x) => x !== s) }));
+
+  const addSection = (raw: string) => {
+    const name = raw.trim().slice(0, 60).trim();
+    if (!name) return;
+    setForm((f) =>
+      f.defaultSections.includes(name) || f.defaultSections.length >= MAX_BODY_SECTIONS
+        ? f
+        : { ...f, defaultSections: [...f.defaultSections, name] },
+    );
+    setNewSection('');
+  };
 
   const handleLogo = (file: File) => {
     const reader = new FileReader();
@@ -225,40 +234,76 @@ export default function SettingsPage() {
             <Typography variant="subtitle2" sx={{ mb: 2 }}>
               Report template
             </Typography>
-            <FieldLabel>Default sections</FieldLabel>
+            <FieldLabel>
+              Default sections{' '}
+              <Typography component="span" variant="caption" sx={{ color: brand.faint }}>
+                — name them for your practice, e.g. "Tax & entity considerations"
+              </Typography>
+            </FieldLabel>
             <Box
               sx={{
                 border: `1px solid ${brand.line}`,
                 borderRadius: '10px',
-                px: 2,
-                py: 1,
+                px: 1.5,
+                py: 1.25,
                 mb: 2,
                 display: 'flex',
                 flexWrap: 'wrap',
-                columnGap: 1,
+                alignItems: 'center',
+                gap: 0.75,
               }}
             >
               {/* Mandatory structure — always included, server-enforced */}
               {MANDATORY_SECTIONS.map((s) => (
-                <FormControlLabel
-                  key={s}
-                  control={<Checkbox size="small" checked disabled />}
-                  label={
-                    <Typography variant="body2" sx={{ color: brand.muted }}>
-                      {s}
-                    </Typography>
-                  }
-                />
+                <Chip key={s} size="small" label={s} sx={{ bgcolor: brand.surface, color: brand.muted }} />
               ))}
-              {BODY_SECTIONS.map((s) => (
-                <FormControlLabel
-                  key={s}
-                  control={
-                    <Checkbox size="small" checked={form.defaultSections.includes(s)} onChange={() => toggleSection(s)} />
-                  }
-                  label={<Typography variant="body2">{s}</Typography>}
-                />
+              {form.defaultSections.map((s) => (
+                <Chip key={s} size="small" label={s} onDelete={() => removeSection(s)} />
               ))}
+              <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', width: '100%', mt: 0.75 }}>
+                <TextField
+                  size="small"
+                  fullWidth
+                  placeholder={
+                    form.defaultSections.length >= MAX_BODY_SECTIONS
+                      ? `Up to ${MAX_BODY_SECTIONS} body sections`
+                      : 'Add a section…'
+                  }
+                  value={newSection}
+                  disabled={form.defaultSections.length >= MAX_BODY_SECTIONS}
+                  onChange={(e) => setNewSection(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      addSection(newSection);
+                    }
+                  }}
+                  slotProps={{ htmlInput: { maxLength: 60 } }}
+                />
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={() => addSection(newSection)}
+                  disabled={!newSection.trim() || form.defaultSections.length >= MAX_BODY_SECTIONS}
+                >
+                  Add
+                </Button>
+              </Box>
+              {form.defaultSections.length === 0 && (
+                <Typography variant="caption" sx={{ color: brand.faint, width: '100%' }}>
+                  Suggestions:{' '}
+                  {BODY_SECTIONS.map((s) => (
+                    <Chip
+                      key={s}
+                      size="small"
+                      variant="outlined"
+                      label={s}
+                      onClick={() => addSection(s)}
+                      sx={{ mr: 0.5, mb: 0.5 }}
+                    />
+                  ))}
+                </Typography>
+              )}
             </Box>
             <FieldLabel>
               AI prompt / style{' '}

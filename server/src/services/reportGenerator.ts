@@ -595,7 +595,7 @@ export async function generateReport(input: GenerateInput, options: GenerateOpti
     lead.orgSize ? `- Size: ${lead.orgSize}` : null,
     lead.headquarters ? `- Headquarters: ${lead.headquarters}` : null,
     lead.locationsReach ? `- Reach: ${lead.locationsReach}` : null,
-    lead.hiringSignal ? `- Hiring signal: ${lead.hiringSignal}` : null,
+    lead.hiringSignal ? `- Signal (growth / buying / hiring): ${lead.hiringSignal}` : null,
   ].filter((l) => l !== null);
 
   // 1. Research — a dedicated agent investigates the company + vertical.
@@ -828,7 +828,19 @@ function stubReport(input: GenerateInput): GeneratedReport {
     coverImageUrl: null,
     sectionImageUrl: null,
     imageCredit: null,
-    sections: input.sections.map((s) => bodies[s]).filter(Boolean),
+    sections: input.sections.map(
+      (s) =>
+        bodies[s] ?? {
+          // Custom sender-defined sections get generic stub filler so the
+          // composed structure (and validation) still holds without a key.
+          key: s,
+          kicker: 'BRIEFING',
+          heading: `${s} — what the evidence suggests for ${lead.organization}`,
+          body:
+            `This section explores ${s.toLowerCase()} for ${lead.organization} in the context of ${focusLower}. ` +
+            `Set ANTHROPIC_API_KEY to generate researched, personalized analysis here.`,
+        },
+    ),
     publications: ['HFMA', "Becker's Hospital Review", 'RevCycle Intelligence'],
     model: 'stub (no ANTHROPIC_API_KEY set)',
   };

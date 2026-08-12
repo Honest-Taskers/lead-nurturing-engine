@@ -160,7 +160,7 @@ export default function LeadDetailPage() {
                   ['Rep', lead.assignedRep],
                 ]}
               />
-              <MetaRow items={[['Hiring signal', lead.hiringSignal]]} />
+              <MetaRow items={[['Signal', lead.hiringSignal]]} />
             </Box>
           </Card>
 

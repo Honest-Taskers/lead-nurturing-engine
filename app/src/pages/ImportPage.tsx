@@ -28,7 +28,7 @@ const TARGET_FIELDS = [
   { value: 'headquarters', label: 'Headquarters' },
   { value: 'locationsReach', label: 'Locations / reach' },
   { value: 'orgSize', label: 'Provider / organization size' },
-  { value: 'persona', label: 'RCM leader / target persona' },
+  { value: 'persona', label: 'Target persona' },
   { value: 'contact', label: 'LinkedIn / target (emails, phones)' },
   { value: 'contactPath', label: 'LinkedIn / contact path' },
   { value: 'photoUrl', label: 'Photo URL (headshot)' },

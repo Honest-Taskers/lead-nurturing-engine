@@ -182,18 +182,25 @@ const SECTION_RENAMES: Record<string, string> = {
   'How Honest Taskers helps': 'Closing note',
 };
 
+/** Custom body sections: max name length and max count (page budget). */
+export const MAX_SECTION_NAME_LENGTH = 60;
+export const MAX_BODY_SECTIONS = 6;
+
 /**
  * Composes the final ordered section list for generation: mandatory sections
- * wrap whatever body sections were requested (legacy names normalized,
- * unknowns dropped, order preserved, deduped).
+ * wrap whatever body sections were requested (legacy names normalized, order
+ * preserved, deduped). Senders define their own body sections, so any
+ * non-empty custom name flows through — capped in length and count so the
+ * writer's page budget holds.
  */
 export function normalizeRequestedSections(requested: string[]): string[] {
   const body: string[] = [];
   for (const raw of requested) {
-    const key = SECTION_RENAMES[raw] ?? raw;
+    const key = (SECTION_RENAMES[raw] ?? raw).trim().slice(0, MAX_SECTION_NAME_LENGTH).trim();
+    if (!key) continue;
     if ((MANDATORY_SECTIONS as readonly string[]).includes(key)) continue;
-    if (!(BODY_SECTIONS as readonly string[]).includes(key)) continue;
     if (!body.includes(key)) body.push(key);
+    if (body.length >= MAX_BODY_SECTIONS) break;
   }
   return ['Executive summary', ...body, 'Actionable takeaways', 'Closing note'];
 }

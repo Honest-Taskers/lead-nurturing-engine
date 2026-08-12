@@ -24,7 +24,7 @@ import { Link as RouterLink, useNavigate, useSearchParams } from 'react-router-d
 import PageHeader from '../components/PageHeader';
 import CompanyLogo from '../components/CompanyLogo';
 import DueChip from '../components/StatusChip';
-import { focusFromTitle } from '../components/GenerateReportDialog';
+import { defaultFocus } from '../components/GenerateReportDialog';
 import { REPORT_TEMPLATES, formatShortDate, isDue } from '../data/types';
 import { brand } from '../theme';
 import { useApp } from '../context/AppContext';
@@ -99,7 +99,7 @@ export default function LeadsPage() {
     for (const l of chosen) {
       try {
         await generateReport(l.id, {
-          focus: focusFromTitle(l.personaTitle),
+          focus: defaultFocus(l),
           template: REPORT_TEMPLATES[0],
           sections: [...settings.defaultSections],
         });
