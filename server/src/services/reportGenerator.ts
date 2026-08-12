@@ -455,9 +455,30 @@ function normalizeParsed(p: ParsedReport): ParsedReport {
 }
 
 /**
+ * Total wall-clock budget for one generation. On Vercel the function is hard
+ * killed at 300s (vercel.json maxDuration), so every stage gate derives from
+ * this instead of hoping the pipeline fits.
+ */
+const GENERATION_BUDGET_MS = Number(
+  process.env.GENERATION_BUDGET_MS ?? (process.env.VERCEL ? 285_000 : 480_000),
+);
+/**
+ * Writer thinking depth. Serverless defaults to medium: on Sonnet 5 it is
+ * comparable to the previous generation at high, and it reliably fits the
+ * 300s function cap that a high-effort draft (3+ minutes) regularly blew.
+ */
+const WRITER_EFFORT = (process.env.WRITER_EFFORT ?? (process.env.VERCEL ? 'medium' : 'high')) as
+  | 'low'
+  | 'medium'
+  | 'high';
+
+/**
  * Writer agent — composes the report JSON from the research brief (no tools).
  * max_tokens covers adaptive thinking PLUS the JSON text; too tight a budget
- * truncates the JSON mid-string. One retry covers transient truncation.
+ * truncates the JSON mid-string. One retry covers transient truncation or a
+ * dropped stream — but only when enough of the generation budget remains to
+ * finish it (a retry that starts too late just converts a bad draft into a
+ * serverless timeout).
  */
 async function runWriterAgent(
   client: Anthropic,
@@ -465,6 +486,7 @@ async function runWriterAgent(
   prompt: string,
   signal?: AbortSignal,
   onProgress?: GenerateOptions['onProgress'],
+  deadlineAt?: number,
 ): Promise<ParsedReport> {
   const attempt = async (): Promise<ParsedReport> => {
     const stream = client.messages.stream(
@@ -472,7 +494,7 @@ async function runWriterAgent(
         model,
         max_tokens: 32000,
         system: loadSkill('ht-report-writer'),
-        output_config: { format: { type: 'json_schema', schema: REPORT_SCHEMA } },
+        output_config: { effort: WRITER_EFFORT, format: { type: 'json_schema', schema: REPORT_SCHEMA } },
         messages: [{ role: 'user', content: prompt }],
       },
       { signal },
@@ -509,6 +531,16 @@ async function runWriterAgent(
     return await attempt();
   } catch (err) {
     if (signal?.aborted) throw err;
+    // A rewrite needs roughly as long as the first draft took — if the budget
+    // can't fit one, fail now instead of guaranteeing a platform timeout.
+    const RETRY_NEEDS_MS = 120_000;
+    if (deadlineAt !== undefined && Date.now() + RETRY_NEEDS_MS > deadlineAt) {
+      console.warn(
+        'writer attempt failed with no budget left for a retry:',
+        err instanceof Error ? err.message : err,
+      );
+      throw err;
+    }
     console.warn('writer attempt failed, retrying once:', err instanceof Error ? err.message : err);
     onProgress?.('writing', 'First draft came back malformed — rewriting…');
     return await attempt();
@@ -554,6 +586,7 @@ export async function generateReport(input: GenerateInput, options: GenerateOpti
   const model = MODEL_MAP[input.aiModel] ?? DEFAULT_MODEL;
   const { lead } = input;
   const startedAt = Date.now();
+  const deadlineAt = startedAt + GENERATION_BUDGET_MS;
 
   const leadDetails = [
     'Recipient / lead details:',
@@ -597,20 +630,23 @@ export async function generateReport(input: GenerateInput, options: GenerateOpti
   ]
     .filter((l) => l !== null)
     .join('\n');
-  let parsed = await runWriterAgent(client, model, writerPrompt, signal, onProgress);
+  // The writer's deadline reserves ~25s for image fetch + DB save so a retry
+  // never runs the function into the platform kill.
+  const writerDeadline = deadlineAt - 25_000;
+  let parsed = await runWriterAgent(client, model, writerPrompt, signal, onProgress, writerDeadline);
   console.log(`draft report ready (${Math.round((Date.now() - startedAt) / 1000)}s)`);
 
   // 3. Deterministic structural validation + 4. small-model goal check.
   onProgress?.('goal-check', 'Auditing the draft against the quality rubric');
   let { hard, soft } = validateReport(parsed, input.sections);
-  const goalIssues = Date.now() - startedAt < 210_000 ? await runGoalCheck(client, parsed, signal) : [];
+  const goalIssues = Date.now() < deadlineAt - 75_000 ? await runGoalCheck(client, parsed, signal) : [];
   if (goalIssues.length) console.warn('goal check issues:', goalIssues);
 
   // 5. One repair pass (no research — the content exists, only shape/rubric is off).
-  // Skipped when the 300s serverless budget is running low; a slightly-off
-  // report beats a timeout.
+  // Skipped when the serverless budget is running low; a slightly-off report
+  // beats a timeout.
   const violations = [...hard, ...goalIssues];
-  if (violations.length && Date.now() - startedAt < 230_000) {
+  if (violations.length && Date.now() < deadlineAt - 55_000) {
     console.warn('report failed validation, attempting repair:', violations);
     onProgress?.('repair', `Fixing ${violations.length} issue${violations.length === 1 ? '' : 's'} found in review`);
     try {
@@ -627,7 +663,7 @@ export async function generateReport(input: GenerateInput, options: GenerateOpti
         '',
         `Report JSON:\n${JSON.stringify(parsed)}`,
       ].join('\n');
-      const repaired = await runWriterAgent(client, model, repairPrompt, signal);
+      const repaired = await runWriterAgent(client, model, repairPrompt, signal, undefined, writerDeadline);
       const recheck = validateReport(repaired, input.sections);
       if (recheck.hard.length <= hard.length) {
         parsed = repaired;
